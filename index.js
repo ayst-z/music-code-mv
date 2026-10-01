@@ -123,6 +123,24 @@ function sha1(file) {
 
 const textBlock = (text) => [{ type: 'text', text }];
 
+/**
+ * 找「用户的工作区」，而不是宿主进程的 cwd —— 桌面版进程的 cwd 是 profile 目录，
+ * 用它当工作区根会扫不到任何工程（面板空白的根因）。
+ * Resolve the user's workspace instead of the host process cwd.
+ */
+function resolveStudioRoot(ctx) {
+  try {
+    const registry = typeof ctx.get === 'function' ? ctx.get('workspaceRegistry') : null;
+    const list = registry && typeof registry.list === 'function' ? registry.list() : [];
+    const withSessions = list.filter((w) => {
+      try { return Array.isArray(w.sessionIds) && w.sessionIds.length > 0; } catch { return false; }
+    });
+    const pick = (withSessions.length ? withSessions : list).slice(-1)[0];
+    if (pick && typeof pick.path === 'string' && fs.existsSync(pick.path)) return pick.path;
+  } catch { /* 没有注册表就退回 cwd / no registry: fall back to cwd */ }
+  return process.cwd();
+}
+
 export function apply(ctx, config) {
   const cfg = config || {};
 
@@ -133,7 +151,9 @@ export function apply(ctx, config) {
   const studio = { current: null };
   if (typeof ctx.inject === 'function') {
     ctx.inject(['webServer'], (webCtx) => {
-      const instance = createStudio({ root: cfg.studioRoot || process.cwd() });
+      const instance = createStudio(cfg.studioRoot
+        ? { root: cfg.studioRoot }
+        : { resolveRoot: () => resolveStudioRoot(ctx) });
       const dispose = instance.register(webCtx.webServer);
       studio.current = instance;
       if (typeof webCtx.effect === 'function') {

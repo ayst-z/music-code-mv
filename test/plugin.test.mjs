@@ -130,12 +130,17 @@ let studioTool = null;
 const fakeWeb = { port: 45678, register(route) { routes.push(route); return () => { routes.length = 0; }; } };
 const ctx2 = {
   tools: { register: (t) => { if (t.name === 'music_mv_studio') studioTool = t; } },
+  // 桌面版进程的 cwd 是 profile 目录：工作区根必须来自注册表，不能来自 cwd
+  get(name) {
+    if (name !== 'workspaceRegistry') return undefined;
+    return { list: () => [{ path: PLUGIN, sessionIds: ['s1'] }] };
+  },
   inject(deps, cb) {
     ok('图形界面只依赖 webServer', Array.isArray(deps) && deps.length === 1 && deps[0] === 'webServer', JSON.stringify(deps));
     cb({ webServer: fakeWeb, effect: (fn) => { const d = fn(); return typeof d === 'function' ? d : () => {}; } });
   }
 };
-mod.apply(ctx2, { ...config, studioRoot: PLUGIN });
+mod.apply(ctx2, { ...config }); // 不给 studioRoot：走 workspaceRegistry 解析
 ok('注册了 /music-mv 前缀路由', routes.length === 1 && routes[0].kind === 'prefix' && routes[0].path === '/music-mv',
   routes.map(r => r.kind + ' ' + r.path).join(',') || 'none');
 ok('studio 工具已注册', !!studioTool);
@@ -143,6 +148,8 @@ const studioInfo = await studioTool.execute({});
 ok('studio 工具返回中文摘要与地址',
   studioInfo.includes('MV 工坊') && studioInfo.includes('/music-mv/studio') && studioInfo.includes('工程 projects'),
   studioInfo.split('\n').slice(0, 3).join(' | '));
+ok('工作室根目录解析到注册表里的工作区（不是 cwd）',
+  studioInfo.includes('工作区 workspace: ' + PLUGIN), studioInfo.split('\n')[2]);
 const studioUrl = await studioTool.execute({ action: 'url' });
 ok('studio action=url 只回地址', /^http:\/\/127\.0\.0\.1:\d+\/music-mv\/studio$/.test(studioUrl), studioUrl);
 

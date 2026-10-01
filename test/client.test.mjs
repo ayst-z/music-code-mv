@@ -105,6 +105,14 @@ ok('槽位挂在 sidebar.right.pane.tab', !!paneSlot && paneSlot.spec.key === 'd
   paneSlot ? JSON.stringify(paneSlot.spec) : 'missing');
 ok('常驻面板挂在 shell.overlay', !!dockSlot && dockSlot.spec.id === 'music-mv-dock',
   dockSlot ? JSON.stringify(dockSlot.spec) : 'missing');
+ok('字典有一键开启对话文案', !!calls.dictionaries.dict.zh['dock.start'] && !!calls.dictionaries.dict.en['dock.start'],
+  calls.dictionaries.dict.zh['dock.start'] + ' / ' + calls.dictionaries.dict.en['dock.start']);
+ok('面板实现了一键开启对话（按钮 + onKickoff + 会话作用域发送）', (function () {
+  const src = fs.readFileSync(CLIENT, 'utf8');
+  return src.includes("t('dock.start')") && src.includes('onKickoff') &&
+    src.includes('startSkillConversation') && src.includes('sessions.scope(') &&
+    src.includes('SKILL_COMMAND');
+})(), 'kickoff wiring present');
 ok('常驻面板默认展开（一直显示）', (function () {
   const tree = dockSlot && dockSlot.component({ t: (k) => k, openStudio: function () {} });
   let hit = false;
