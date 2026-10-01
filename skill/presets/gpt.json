@@ -1,0 +1,45 @@
+{
+  "id": "gpt",
+  "title": "GPT 黑白 / GPT Mono",
+  "summary": "纯黑白最高对比，排版就是一切；全片只留一处历史 ChatGPT 绿（hot，一段一次），其余全是灰阶。",
+  "palette": {
+    "bg": "#000000",
+    "dim": "#2e2e2e",
+    "base": "#e8e8e8",
+    "accent": "#ffffff",
+    "hot": "#74aa9c",
+    "text": "#ffffff"
+  },
+  "fx": {
+    "chroma": false, "chromaAmount": 1, "chromaAlpha": 0.1,
+    "scanlines": false, "scanAlpha": 0.08, "scanGap": 3,
+    "bloom": false, "bloomAlpha": 0.35,
+    "vignette": true,
+    "grain": true, "grainAlpha": 0.45
+  },
+  "duration": 20,
+  "three": {
+    "geometry": "mono-grid",
+    "camera": { "mode": "track", "radius": 4.0, "height": 0.0, "speed": 0.5 },
+    "post": { "bloom": 0.6, "threshold": 0.15, "chroma": false, "scanlines": false },
+    "roles": { "background": "bg", "fog": "bg", "wire": "base", "emissive": "accent", "flare": "hot", "label": "text" }
+  },
+  "storyboard": {
+    "summary": "排版机器：token、注意力、报错、崩溃——黑白之间只有一次绿色事件。",
+    "shots": [
+      { "id": "01-token", "start": 0, "end": 3.5, "what": "真实 token 方块逐个落进 12 栏栅格（M5）", "style": "T2 + T1", "lyric": "token 落进格子里" },
+      { "id": "02-attn", "start": 3.5, "end": 7.5, "what": "注意力头连成一张低 alpha 曲线网（M5）", "style": "T12", "lyric": "注意力连成一张网" },
+      { "id": "03-error", "start": 7.5, "end": 11.5, "what": "真实调用栈整屏上字，绿色只圈一次帧号（M10）", "style": "T1", "lyric": "报错先于答案" },
+      { "id": "04-sort", "start": 11.5, "end": 15.5, "what": "GPU 像素排序：整帧按亮度重排成条纹瀑布（M11）", "style": "T3", "lyric": "像素按亮度重排" },
+      { "id": "05-wipe", "start": 15.5, "end": 18, "what": "逐行擦除露出纯黑，残片两帧即走（M16）", "style": "T9", "lyric": "exit code 是 0" },
+      { "id": "06-cursor", "start": 18, "end": 20, "what": "黑屏只剩光标，闪两下定格（M17）", "style": "T1", "lyric": "—" }
+    ]
+  },
+  "lyrics": [
+    "[00:02.00]token 落进格子里",
+    "[00:06.00]注意力连成一张网",
+    "[00:10.00]报错先于答案",
+    "[00:14.00]像素按亮度重排",
+    "[00:18.00]exit code 是 0"
+  ]
+}

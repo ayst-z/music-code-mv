@@ -24,6 +24,12 @@
     "grainAlpha": 0.45
   },
   "duration": 21,
+  "three": {
+    "geometry": "instanced-lattice",
+    "camera": { "mode": "dolly", "radius": 4.8, "height": 0.8, "speed": 0.45 },
+    "post": { "bloom": 1.0, "threshold": 0.15, "chroma": true, "scanlines": true },
+    "roles": { "background": "bg", "fog": "bg", "wire": "base", "emissive": "accent", "flare": "hot", "label": "text" }
+  },
   "storyboard": {
     "summary": "身份查不到、日志停不下来，只有一句歌词是清楚的。",
     "shots": [

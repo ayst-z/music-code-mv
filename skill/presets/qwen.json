@@ -1,0 +1,45 @@
+{
+  "id": "qwen",
+  "title": "Qwen 紫青 / Qwen Violet",
+  "summary": "紫青双强调压在深紫黑上：振动、模态与几何证明的镜头语言。品红 hot 一段一次。",
+  "palette": {
+    "bg": "#0a0714",
+    "dim": "#332e91",
+    "base": "#615ced",
+    "accent": "#22d3ee",
+    "hot": "#ff4ddb",
+    "text": "#ede9fe"
+  },
+  "fx": {
+    "chroma": true, "chromaAmount": 1, "chromaAlpha": 0.12,
+    "scanlines": false, "scanAlpha": 0.08, "scanGap": 3,
+    "bloom": true, "bloomAlpha": 0.5,
+    "vignette": true,
+    "grain": true, "grainAlpha": 0.3
+  },
+  "duration": 20,
+  "three": {
+    "geometry": "lissajous-ribbon",
+    "camera": { "mode": "orbit", "radius": 4.6, "height": 0.7, "speed": 0.35 },
+    "post": { "bloom": 0.8, "threshold": 0.15, "chroma": true, "scanlines": false },
+    "roles": { "background": "bg", "fog": "bg", "wire": "base", "emissive": "accent", "flare": "hot", "label": "text" }
+  },
+  "storyboard": {
+    "summary": "频率的形状学：利萨茹、贝塞尔模态、心形曲线，最后收进递归。",
+    "shots": [
+      { "id": "01-lassie", "start": 0, "end": 3.5, "what": "两个频率锁成一个利萨茹闭合环（M8）", "style": "T8", "lyric": "两个频率画一个环" },
+      { "id": "02-bessel", "start": 3.5, "end": 7.5, "what": "J₄(j₄,5r)·cos 4θ 在圆盘上结出四瓣（M8）", "style": "T8 + T12", "lyric": "模态结出四瓣" },
+      { "id": "03-grid", "start": 7.5, "end": 11.5, "what": "严格 12 栏栅格上，定义与字阶逐级排好（M3）", "style": "T2", "lyric": "定义在栅格上排好" },
+      { "id": "04-heart", "start": 11.5, "end": 15.5, "what": "九种心形曲线轮播，品红 hot 点过最后一枚（M14）", "style": "T2 + T5", "lyric": "振动完成它的形状" },
+      { "id": "05-recursive", "start": 15.5, "end": 18, "what": "同一心形缩小 0.62 递归套回 ≤5 层（M14）", "style": "T10", "lyric": "曲线收进递归" },
+      { "id": "06-end", "start": 18, "end": 20, "what": "递归收到单点，exit code 印上屏（M17）", "style": "T1", "lyric": "—" }
+    ]
+  },
+  "lyrics": [
+    "[00:02.00]两个频率画一个环",
+    "[00:06.00]模态结出四瓣",
+    "[00:10.00]定义在栅格上排好",
+    "[00:14.00]振动完成它的形状",
+    "[00:18.00]曲线收进递归"
+  ]
+}

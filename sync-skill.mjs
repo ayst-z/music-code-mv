@@ -20,8 +20,16 @@ if (!fs.existsSync(SRC)) {
   process.exit(2);
 }
 
+// Never ship render artefacts or caches with the skill snapshot: frames/out are
+// huge and rebuildable, __pycache__ is interpreter junk, np-demo is a scratch
+// demo project. Keep this list in sync with .gitignore.
+const SKIP_DIRS = new Set(['node_modules', 'frames', 'out', '.cache',
+                           '__pycache__', '.git', 'np-demo']);
+const SKIP_FILES = [/\.pyc$/, /\.log$/, /^\.DS_Store$/, /\.tgz$/];
+
 function walk(dir, base = dir, out = new Map()) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (e.isDirectory() ? SKIP_DIRS.has(e.name) : SKIP_FILES.some(r => r.test(e.name))) continue;
     const p = path.join(dir, e.name);
     if (e.isDirectory()) walk(p, base, out);
     else out.set(path.relative(base, p), fs.readFileSync(p));

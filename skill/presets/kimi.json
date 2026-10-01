@@ -1,0 +1,45 @@
+{
+  "id": "kimi",
+  "title": "Kimi 冷蓝 / Kimi Quiet",
+  "summary": "单一冷蓝 + 大留白：走廊、光标与逐行擦除的安静镜头。月黄是唯一 hot，像夜里的一盏灯。",
+  "palette": {
+    "bg": "#121212",
+    "dim": "#1b2e4c",
+    "base": "#1a88ff",
+    "accent": "#a8c7ff",
+    "hot": "#ffdf7a",
+    "text": "#e4ecfb"
+  },
+  "fx": {
+    "chroma": false, "chromaAmount": 1, "chromaAlpha": 0.1,
+    "scanlines": false, "scanAlpha": 0.06, "scanGap": 3,
+    "bloom": true, "bloomAlpha": 0.3,
+    "vignette": true,
+    "grain": true, "grainAlpha": 0.45
+  },
+  "duration": 20,
+  "three": {
+    "geometry": "corridor",
+    "camera": { "mode": "dolly", "radius": 9.0, "height": 0.2, "speed": 0.15 },
+    "post": { "bloom": 0.5, "threshold": 0.15, "chroma": false, "scanlines": false },
+    "roles": { "background": "bg", "fog": "bg", "wire": "base", "emissive": "accent", "flare": "hot", "label": "text" }
+  },
+  "storyboard": {
+    "summary": "走廊尽头的一盏灯：一步一步走过去，画面被逐行擦掉，只剩光标。",
+    "shots": [
+      { "id": "01-corridor", "start": 0, "end": 4, "what": "单点透视走廊，尽头的门是唯一光源，步频轻推相机（M15）", "style": "T5", "lyric": "走廊尽头有一盏灯" },
+      { "id": "02-step", "start": 4, "end": 8, "what": "栅格随脚步起伏，灯一盏盏亮过头顶（M15）", "style": "T5 + T8", "lyric": "脚步让栅格起伏" },
+      { "id": "03-wipe", "start": 8, "end": 12, "what": "画面被逐行擦掉露出 bg，残片两三帧即走（M16）", "style": "T9", "lyric": "画面被逐行擦掉" },
+      { "id": "04-cursor", "start": 12, "end": 16, "what": "只剩光标在呼吸，月黄闪一次（M17）", "style": "T1", "lyric": "只留下光标" },
+      { "id": "05-lamp", "start": 16, "end": 18, "what": "最后一格灯灭，暗角收紧（M15）", "style": "T4", "lyric": "灯灭了" },
+      { "id": "06-black", "start": 18, "end": 20, "what": "黑场 2 秒，exit code 用字阶顶端亮出一次（M17）", "style": "T1", "lyric": "—" }
+    ]
+  },
+  "lyrics": [
+    "[00:02.50]走廊尽头有一盏灯",
+    "[00:06.50]脚步让栅格起伏",
+    "[00:10.50]画面被逐行擦掉",
+    "[00:14.50]只留下光标",
+    "[00:17.50]灯灭了"
+  ]
+}

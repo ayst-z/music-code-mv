@@ -5,3 +5,14 @@ out/
 frames/
 *.log
 .DS_Store
+
+# Python render engine artefacts — sync-skill.mjs copies the whole skill tree,
+# so without these `git add -A` would pick up interpreter caches
+__pycache__/
+*.pyc
+
+# pack output
+*.tgz
+
+# scratch demo project shipped with the skill source (frame dumps + mp4)
+np-demo/

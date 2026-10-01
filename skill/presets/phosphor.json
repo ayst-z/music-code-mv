@@ -24,6 +24,12 @@
     "grainAlpha": 0.3
   },
   "duration": 20,
+  "three": {
+    "geometry": "wireframe-solids",
+    "camera": { "mode": "orbit", "radius": 4.3, "height": 0.9, "speed": 0.38 },
+    "post": { "bloom": 0.9, "threshold": 0.1, "chroma": true, "scanlines": true },
+    "roles": { "background": "bg", "fog": "bg", "wire": "base", "emissive": "accent", "flare": "hot", "label": "text" }
+  },
   "storyboard": {
     "summary": "一台不肯关机的老机器，用磷光把话一句句打出来。",
     "shots": [

@@ -86,9 +86,9 @@ npm install three puppeteer-core ffmpeg-static
 ## Install / 安装
 
 ```bash
-git clone https://github.com/<you>/dsh-music-code-mv
-cd dsh-music-code-mv
-dsh plugin --profile demo add .
+git clone https://github.com/ayst-z/music-code-mv
+cd music-code-mv
+dsh plugin add .
 dsh --profile demo --dump-config | grep dsh-music-code-mv   # should show a "# == dsh-music-code-mv" layer
 # Windows / Windows 下等价写法：
 # dsh --profile demo --dump-config | findstr /C:"dsh-music-code-mv"
@@ -405,7 +405,7 @@ test/plugin.test.mjs    工具契约与真实渲染（模拟 Cordis 上下文）
 test/studio.test.mjs    图形界面宿主半边：真起 HTTP 服务跑一遍 / the GUI host half over a real HTTP server
 test/client.test.mjs    浏览器半边：假 ModuleLoader + 假 React / the client half without restarting DSH
 test/studio-shot.mjs    给工作室页面截图做目视检查 / screenshots the studio page for visual review
-sync-skill.mjs          copies skills/music-code-mv (28 files) -> skill/ (single source of truth) / 同步 28 个文件，skills/music-code-mv 为唯一事实来源
+sync-skill.mjs          copies skills/music-code-mv -> skill/ (single source of truth; frames/out/caches excluded) / 同步 skill 源到 skill/（唯一事实来源，排除渲染产物与缓存）
 ```
 
 **Supervisor / worker split.** With `--workers=N`, `render.mjs` re-executes itself N times, each worker owning the frames where `frame % N === index`. Workers emit `##PROGRESS` and `##STATS` lines; the supervisor aggregates them into one bar and merges per-worker signature shards afterwards.

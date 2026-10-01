@@ -1,6 +1,6 @@
 ---
 name: music-code-mv
-description: Direct and render code-driven music videos and animated shorts (纯代码渲染 MV / code-rendered video) where every frame is drawn by HTML/Canvas/WebGL/Three.js code and encoded to MP4 with ffmpeg. Use when asked to make an MV, lyric video, motion-graphics short, title sequence, or any animation whose visuals are produced by code rather than a video model or stock footage. Covers storyboard-first direction, deterministic virtual-time rendering, headless Chrome capture, contact-sheet self-review, lyric sync, and audio muxing. 指导与渲染由代码驱动的音乐视频与动画短片（纯代码渲染 MV / code-rendered video）：每一帧都由 HTML/Canvas/WebGL/Three.js 代码绘制，再用 ffmpeg 编码为 MP4。当被要求制作 MV、歌词视频、动态图形短片、片头，或任何画面由代码而非视频模型、素材库生成的动画时使用。涵盖分镜先行的导演方法、确定性虚拟时间渲染、无头 Chrome 截帧、联系表自检、歌词对齐与音频封装。
+description: Direct and render code-driven music videos and animated shorts (纯代码渲染 MV / code-rendered video) where every frame is drawn by code — HTML/Canvas/WebGL/Three.js in headless Chrome, or a NumPy + Pillow frame-by-frame Python engine — and encoded to MP4 with ffmpeg. Use when asked to make an MV, lyric video, motion-graphics short, title sequence, or any animation whose visuals are produced by code rather than a video model or stock footage. Covers storyboard-first direction, deterministic virtual-time rendering, contact-sheet self-review, lyric sync, audio muxing, strict grid & type scale, segmented color scripts, and AI-model brand palettes (Claude / DeepSeek / GPT …). 指导与渲染由代码驱动的音乐视频与动画短片（纯代码渲染 MV / code-rendered video）：每一帧都由代码绘制——无头 Chrome 里的 HTML/Canvas/WebGL/Three.js，或 NumPy + Pillow 逐帧 Python 引擎——再用 ffmpeg 编码为 MP4。当被要求制作 MV、歌词视频、动态图形短片、片头，或任何画面由代码而非视频模型、素材库生成的动画时使用。涵盖分镜先行的导演方法、确定性虚拟时间渲染、联系表自检、歌词对齐与音频封装、严格栅格与字阶、分段色彩脚本、以及主流 AI 模型品牌配色预设。
 ---
 
 # 代码风格 MV (Code-rendered MV)
@@ -49,6 +49,12 @@ The agent acts as **director + renderer**: storyboard first, build shot by shot,
 
 Eight steps: **interview** → storyboard; scaffold; build one scene module per shot; check with `--contact` and judge the sheet PNG; iterate; render the MP4; finish by muxing audio, verifying duration/streams and presenting the file.
 
+### 备选引擎：NumPy + Pillow (Alternative engine)
+
+画面本质是**数学**（场、SDF、分形、采样理论）、要**逐像素级的严格栅格排版**，或者无头 Chrome 起不来（沙箱 `spawn EPERM`）时，换第二条引擎：`python scripts/render-np.py --init=<dir> [--preset=<id>]` 脚手架，`--contact` 自检，`--out=out/video.mp4` 出片——契约、缓存、联系表、预设与 Chrome 引擎完全同构（`render_at(t, env)` 纯函数，帧缓存 `frames/f%05d.png`）。四个核心方法——**逐帧渲染、3D 透视投影、严格栅格与字阶、分段色彩脚本**——的完整做法见 `reference/numpy-pillow.md`。
+
+When the frame is fundamentally **math** (fields, SDFs, fractals, sampling), when you need pixel-exact grid typography, or when headless Chrome cannot start (sandbox `spawn EPERM`), switch engines: `render-np.py` scaffolds (`--init`), self-checks (`--contact`) and renders (`--out=out/video.mp4`) with the identical contract, frame cache, contact sheet and preset set. Full recipes for the four core methods — frame-by-frame rendering, 3D perspective projection, strict grid & type scale, segmented color script — live in `reference/numpy-pillow.md`.
+
 ### 0. 询问 —— 先问，再动手 (Interview — ask first)
 
 **没有这一步就不要开始渲染。** 用 `ask_user_question` 一次问 4–6 个问题，每个选项都写清后果；拿到答复再写分镜。**Ask before you build:** one `ask_user_question` call, 4–6 questions, each option carrying its tradeoff; only then write the storyboard.
@@ -91,12 +97,12 @@ node skills/music-code-mv/scripts/init.mjs my-mv --preset=neon-rain  # 套用预
 node skills/music-code-mv/scripts/init.mjs --list-presets            # 列出预设 / list presets
 ```
 
-四个预设 / four presets: `neon-rain`（霓虹雨夜）、`ink-paper`（纸墨，浅色）、`phosphor`（磷光终端）、`dusk-lofi`（落日低保真）。
+四套氛围预设：`neon-rain`（霓虹雨夜）、`ink-paper`（纸墨，浅色）、`phosphor`（磷光终端）、`dusk-lofi`（落日低保真）；另有一族**主流 AI 模型配色预设**：`claude`（橙白）、`deepseek`（蓝黑）、`gpt`（黑白）、`gemini`、`grok`、`mistral`、`llama`、`qwen`、`kimi`——每个都带品牌色提取来的六角色调色板、匹配气质的分镜骨架与 **Three.js 镜头逻辑**。
 细节与「怎么用才不浪费」见 `reference/presets.md`。Preset details live in `reference/presets.md`.
 
-生成的项目自带 Canvas2D 舞台、时间轴、带种子的 PRNG、歌词解析、风格辅助函数和一个可跑的演示场景。只有当某个镜头真的需要 3D 时才引入 Three.js（见 `reference/threejs.md`）。
+生成的项目自带 Canvas2D 舞台、时间轴、带种子的 PRNG、歌词解析、风格辅助函数和一个可跑的演示场景。3D 按 `reference/threejs.md` 的**三级策略**爬：2D 数学 → 手写透视投影 → Three.js（只有光照/材质、实例化、后处理链、模型资产四者之一才升级）。
 
-It creates a project with a Canvas2D stage, a timeline, a seeded PRNG, lyric parsing, style helpers and a working demo scene. Add Three.js only when a shot genuinely needs 3D (see `reference/threejs.md`).
+It creates a project with a Canvas2D stage, a timeline, a seeded PRNG, lyric parsing, style helpers and a working demo scene. Climb the 3D ladder in `reference/threejs.md`: 2D maths → manual perspective projection → Three.js (escalate only for lighting/materials, instancing, post chains, or assets).
 
 ### 3. 逐镜头搭建 (Build shot by shot)
 
@@ -145,6 +151,7 @@ Frames are cached: re-running resumes and only renders what is missing. Use `--f
 | Canvas2D + full FX stack (bloom/chroma/scanlines/grain) | 1280×720 | **~255 ms** |
 | Canvas2D + full FX stack | 480×270 | ~35 ms |
 | Three.js + UnrealBloom | 960×540 | ~190 ms |
+| NumPy + Pillow 引擎（2× 超采样，实测） | 640×360 | **~100 ms**（8 进程：360 帧 3 s） |
 
 占大头的不是场景绘制，而是全帧后期通道：chroma、bloom、scanlines、grain 每一道都要处理全部 921k 个像素。打草稿时要么降到 480×270，要么在 `project.json` 里把对应的 `fx` 开关置为 `false`。一个 12 s / 360 帧的 720p 演示大约 90 s 渲完，可以线性外推（60 s 的 MV 在 30 fps 下 = 1800 帧 ≈ 8 min）。
 
@@ -163,6 +170,7 @@ Measured on this workstation (headless Chrome, software rendering):
 | Canvas2D + full FX stack (bloom/chroma/scanlines/grain) | 1280×720 | **~255 ms** |
 | Canvas2D + full FX stack | 480×270 | ~35 ms |
 | Three.js + UnrealBloom | 960×540 | ~190 ms |
+| NumPy + Pillow engine (2× supersampling, measured) | 640×360 | **~100 ms** (8 workers: 360 frames in 3 s) |
 
 The full-frame post passes dominate, not the scene drawing: each of chroma, bloom, scanlines and grain touches all 921k pixels. For drafts, either drop to 480×270 or set the corresponding `fx` flags to `false` in `project.json`. A 12 s / 360-frame 720p demo renders in about 90 s; scale linearly (a 60 s MV at 30 fps = 1800 frames ≈ 8 min).
 
@@ -188,16 +196,18 @@ Requires Node.js, Google Chrome (or Edge) and ffmpeg. In this workspace they are
 
 ## 参考文档 (Reference)
 
-- `reference/presets.md` —— 四个开箱即用的预设：配色、后期、时长、分镜、占位歌词
-- `reference/styles.md` —— 代码 MV 观感的风格词汇与配方
+- `reference/presets.md` —— 四个开箱即用的预设：配色、后期、时长、分镜、占位歌词；外加 AI 模型配色预设家族
+- `reference/styles.md` —— 代码 MV 观感的风格词汇：T1–T27 风格（显示器家族 T13–T24：CRT/矢量屏/VFD/数码管/LED 点阵/LCD/OLED/电子墨水/热敏/全息投影/VHS/机械翻牌；印刷与像素 T25–T27：半调/像素画/数据砸裂）、M1–M17 母题库（从开机到关机的全部视觉元素）、配色逻辑与品牌两色系统
+- `reference/numpy-pillow.md` —— NumPy + Pillow 逐帧引擎：3D 透视投影、严格栅格与字阶、分段色彩脚本
 - `reference/techniques.md` —— 确定性渲染、Chrome flag、截帧、编码
-- `reference/threejs.md` —— 怎么加 Three.js 镜头
+- `reference/threejs.md` —— 怎么加 Three.js 镜头；预设 → Three.js 镜头逻辑的关联表
 - `reference/lineage.md` —— 这种形式从哪来、这个领域在做什么
 - `reference/environment.md` —— 工具链安装、降级方案、排障
 
-- `reference/styles.md` — style vocabulary and recipes for the code-MV look
+- `reference/styles.md` — style vocabulary: T1–T27 styles (display family T13–T24: CRT/vector/VFD/segments/LED matrix/LCD/OLED/e-ink/thermal/hologram/VHS/split-flap; print & pixel T25–T27: halftone/pixel art/datamosh), the M1–M17 motif library (every visual element of the boot→shutdown program), colour logic and the brand two-colour system
+- `reference/numpy-pillow.md` — the NumPy + Pillow frame engine: 3D perspective projection, strict grid & type scale, segmented color script
 - `reference/techniques.md` — deterministic rendering, Chrome flags, capture, encoding
-- `reference/threejs.md` — adding Three.js shots
+- `reference/threejs.md` — adding Three.js shots, plus the preset → Three.js shot mapping
 - `reference/lineage.md` — where this form comes from and what the field does
 - `reference/environment.md` — toolchain install, fallbacks, troubleshooting
 

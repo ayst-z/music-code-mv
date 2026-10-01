@@ -1,0 +1,45 @@
+{
+  "id": "mistral",
+  "title": "Mistral 焰橙 / Mistral Flare",
+  "summary": "官方焰色渐变三段 #fec63a→#fa500f→#e61300 压在官方深色底 #151524 上：电弧、光束与衍射星芒。bloom 全开，颗粒跟上，热度是主角。",
+  "palette": {
+    "bg": "#151524",
+    "dim": "#3d3a52",
+    "base": "#fa500f",
+    "accent": "#fec63a",
+    "hot": "#e61300",
+    "text": "#fff1e6"
+  },
+  "fx": {
+    "chroma": true, "chromaAmount": 1, "chromaAlpha": 0.15,
+    "scanlines": false, "scanAlpha": 0.08, "scanGap": 3,
+    "bloom": true, "bloomAlpha": 0.55,
+    "vignette": true,
+    "grain": true, "grainAlpha": 0.4
+  },
+  "duration": 20,
+  "three": {
+    "geometry": "ray-burst",
+    "camera": { "mode": "orbit", "radius": 4.2, "height": 0.8, "speed": 0.75 },
+    "post": { "bloom": 1.0, "threshold": 0.15, "chroma": true, "scanlines": false },
+    "roles": { "background": "bg", "fog": "bg", "wire": "base", "emissive": "accent", "flare": "hot", "label": "text" }
+  },
+  "storyboard": {
+    "summary": "能量的形状：电弧、整流、克拉尼纹，一路烧到执行队列再熄成一个点。",
+    "shots": [
+      { "id": "01-arc", "start": 0, "end": 3.5, "what": "击穿电弧沿最短路径劈开间隙，E=V/ε 上屏（M4）", "style": "T8 + T3", "lyric": "电弧劈开间隙" },
+      { "id": "02-blade", "start": 3.5, "end": 7.5, "what": "六叶光圈吐出衍射星芒，随光圈开合呼吸（M4）", "style": "T5", "lyric": "六叶光圈吐出星芒" },
+      { "id": "03-chladni", "start": 7.5, "end": 11.5, "what": "百万沙粒聚成克拉尼四瓣，激励频率上行（M8）", "style": "T6", "lyric": "沙粒排队成纹" },
+      { "id": "04-trace", "start": 11.5, "end": 14, "what": "PCB 走线沿铜箔点亮，焊盘逐个到位（M1）", "style": "T1", "lyric": "能量先找到路" },
+      { "id": "05-exec", "start": 14, "end": 17, "what": "执行队列 16 连，最后一格熄灭全屏硬切（M12）", "style": "T2", "lyric": "十六个格子同时熄灭" },
+      { "id": "06-ember", "start": 17, "end": 20, "what": "焰色逐段退回 bg，灰烬里剩一枚光标（M17）", "style": "T1 + T4", "lyric": "火苗缩成一个点" }
+    ]
+  },
+  "lyrics": [
+    "[00:02.00]电弧劈开间隙",
+    "[00:06.00]六叶光圈吐出星芒",
+    "[00:10.00]沙粒排队成纹",
+    "[00:14.00]十六个格子同时熄灭",
+    "[00:18.00]火苗缩成一个点"
+  ]
+}

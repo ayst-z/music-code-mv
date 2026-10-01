@@ -24,7 +24,7 @@
  *
  * Incremental
  *   Frames are reused when the file exists AND its render signature is unchanged.
- *   A scene can declare \`deps: ['./src/style.js']\` to narrow the blast radius.
+ *   A scene can declare `deps: ['./src/style.js']` to narrow the blast radius.
  *   --force ignores all signatures and re-renders everything.
  *
  * Other
@@ -128,14 +128,20 @@ function findUpFrom(start, rel) {
 }
 function findFfmpeg() {
   for (const c of [opt.ffmpeg, process.env.FFMPEG_PATH]) if (c && fs.existsSync(c)) return c;
+  // Walk up from the project, the cwd and this script's own directory, so a
+  // project parked outside the workspace still reaches the workspace node_modules.
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const starts = [...new Set([projectDir, process.cwd(), here])];
   for (const rel of [
     'node_modules/ffmpeg-static/ffmpeg.exe', 'node_modules/ffmpeg-static/ffmpeg',
     'node_modules/@ffmpeg-installer/win32-x64/ffmpeg.exe',
     'node_modules/@ffmpeg-installer/linux-x64/ffmpeg',
     'node_modules/@ffmpeg-installer/darwin-x64/ffmpeg'
   ]) {
-    const p = findUpFrom(projectDir, rel);
-    if (p) return p;
+    for (const start of starts) {
+      const p = findUpFrom(start, rel);
+      if (p) return p;
+    }
   }
   return 'ffmpeg';
 }

@@ -24,6 +24,12 @@
     "grainAlpha": 0.55
   },
   "duration": 24,
+  "three": {
+    "geometry": "soft-mesh",
+    "camera": { "mode": "orbit", "radius": 5.0, "height": 0.6, "speed": 0.15 },
+    "post": { "bloom": 0.7, "threshold": 0.15, "chroma": false, "scanlines": false },
+    "roles": { "background": "bg", "fog": "bg", "wire": "base", "emissive": "accent", "flare": "hot", "label": "text" }
+  },
   "storyboard": {
     "summary": "太阳落下去的四分钟里，画面越来越暖，最后只剩一条地平线。",
     "shots": [

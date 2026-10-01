@@ -1,0 +1,45 @@
+{
+  "id": "grok",
+  "title": "Grok 灰黑 / Grok Signal",
+  "summary": "单色高对比、重颗粒（x.ai 官方 jet #0a0a0a + sunset #ff6308）：glitch 是标点不是纹理。日落橙是唯一 hot，专属报错与崩溃（M10/M11）。",
+  "palette": {
+    "bg": "#0a0a0a",
+    "dim": "#2f2f2f",
+    "base": "#d6d6d6",
+    "accent": "#ffffff",
+    "hot": "#ff6308",
+    "text": "#ffffff"
+  },
+  "fx": {
+    "chroma": true, "chromaAmount": 2, "chromaAlpha": 0.25,
+    "scanlines": true, "scanAlpha": 0.1, "scanGap": 3,
+    "bloom": false, "bloomAlpha": 0.35,
+    "vignette": true,
+    "grain": true, "grainAlpha": 0.6
+  },
+  "duration": 20,
+  "three": {
+    "geometry": "shattered-slab",
+    "camera": { "mode": "cut-shake", "radius": 3.6, "height": 0.4, "speed": 0.6 },
+    "post": { "bloom": 0.4, "threshold": 0.15, "chroma": true, "scanlines": true },
+    "roles": { "background": "bg", "fog": "bg", "wire": "base", "emissive": "accent", "flare": "hot", "label": "text" }
+  },
+  "storyboard": {
+    "summary": "顶到极限然后炸开：非法参数、NaN、执行队列，红色只在报错那一帧出现。",
+    "shots": [
+      { "id": "01-illegal", "start": 0, "end": 3.5, "what": "ILLEGAL ARGUMENTS 字卡，真实报错整屏上字（M10）", "style": "T1 + T3", "lyric": "非法参数上屏" },
+      { "id": "02-nan", "start": 3.5, "end": 7.5, "what": "IEEE-754：一个数走完 Infinity → NaN 三态硬切（M10）", "style": "T12", "lyric": "精度丢进 NaN" },
+      { "id": "03-queue", "start": 7.5, "end": 11.5, "what": "执行队列 16 连：4×4 依次点亮同时熄灭（M12）", "style": "T2", "lyric": "队列一次点完" },
+      { "id": "04-collapse", "start": 11.5, "end": 15.5, "what": "晶格坍塌 + 像素排序，画面塌成条纹（M11）", "style": "T3", "lyric": "画面按亮度崩塌" },
+      { "id": "05-voronoi", "start": 15.5, "end": 18, "what": "Voronoi 从一个裂点炸开整幅画面（M9）", "style": "T9", "lyric": "剩下的交给删除线" },
+      { "id": "06-signal", "start": 18, "end": 20, "what": "日落橙闪过一次，黑场留光标（M17）", "style": "T1", "lyric": "—" }
+    ]
+  },
+  "lyrics": [
+    "[00:02.00]非法参数上屏",
+    "[00:06.00]精度丢进 NaN",
+    "[00:10.00]队列一次点完",
+    "[00:14.00]画面按亮度崩塌",
+    "[00:18.00]剩下的交给删除线"
+  ]
+}

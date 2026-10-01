@@ -1,0 +1,219 @@
+# NumPy + Pillow 逐帧引擎 (NumPy + Pillow frame engine)
+
+第二条渲染引擎：**每一帧是一个 `float32` 数组，用 NumPy 向量化算出来，用 Pillow 落字与收尾，用 ffmpeg 编码。** 没有浏览器、没有 DOM、没有 WebGL。全程序化生成的四个方法——**逐帧渲染、3D 透视投影、严格栅格与字阶、分段色彩脚本**——都在这里。
+
+A second render engine: **every frame is a `float32` array computed vectorised in NumPy, typeset with Pillow, encoded with ffmpeg.** No browser, no DOM, no WebGL. The four methods of fully-procedural generation — frame-by-frame rendering, 3D perspective projection, strict grid & type scale, segmented color script — live here.
+
+## 什么时候用它 (When to use it)
+
+| 选 Chrome 引擎 when… | 选 NumPy 引擎 when… |
+|---|---|
+| 需要真字体排版、CSS、DOM 分层 | 画面本质是**数学**：场、SDF、分形、采样理论 |
+| 需要 Three.js 光照/材质/实例化 | 每帧要做**重像素运算**（卷积、FFT 类、IEEE-754 演算） |
+| 已有 Canvas2D 场景代码 | 想要**严格栅格 + 精确坐标**的排版，像素说了算 |
+| — | 无头 Chrome 起不来（沙箱 `spawn EPERM`）时的**兜底引擎** |
+
+两个引擎共用同一套不可妥协的规矩：**每一帧是 `t` 的纯函数**、带种子的随机、先分镜后代码、联系表自检。
+
+Both engines share the same non-negotiable rules: **each frame is a pure function of `t`**, seeded randomness, storyboard before code, contact-sheet self-review.
+
+## 工程契约 (The project contract)
+
+```
+my-mv/
+  project.json     # width, height, fps, duration, palette, segments
+  src/render.py    # render_at(t, env) -> PIL.Image；shot_at(t) -> str（可选）
+  frames/          # f00000.png …（帧缓存）
+  out/             # contact.png / video.mp4
+```
+
+`src/render.py` 必须导出两个函数 / it must export two functions:
+
+```python
+def render_at(t, env):   # t = 全局虚拟秒 / global virtual seconds
+    """返回恰好 width×height 的 RGB 图像。同 t → 同像素，永远。"""
+    ...
+
+def shot_at(t, env):     # 可选：给联系表标注镜头名（也接受 shot_at(t)）
+    return "boot" if t < 4 else "grid"
+```
+
+`env` 的字段 / the `env` fields:
+
+| key | 值 / value |
+|---|---|
+| `w`, `h`, `fps`, `duration` | 来自 `project.json` |
+| `t`, `frame` | 本帧虚拟时间与序号（`frame = round(t*fps)`） |
+| `palette` | 六角色调色板 `bg/dim/base/accent/hot/text` |
+| `segments` | 分段色彩脚本（见下），没有则为 `[]` |
+| `project` | 整个 `project.json` |
+| `rnd(seed)` | 返回 `np.random.default_rng(seed)`——**唯一允许的随机来源** |
+
+## 命令 (Commands)
+
+```bash
+# 任何带 numpy + Pillow 的 Python 3.10+；本工作区用 load_workspace_dependencies 给的 python
+python scripts/render-np.py --init=my-mv-np [--preset=claude]   # 脚手架
+python scripts/render-np.py --project=my-mv-np --contact        # 联系表（自检）
+python scripts/render-np.py --project=my-mv-np --stills=0,3,8   # 指定时刻单帧
+python scripts/render-np.py --project=my-mv-np --out=out/video.mp4 --audio=track.mp3
+python scripts/render-np.py --project=my-mv-np --out=out/video.mp4 --workers=8  # 多进程补帧
+```
+
+`--preset=` 接 `presets/*.json`（与 Chrome 引擎同一批预设：`claude`、`deepseek`、`gpt`、`neon-rain`…）。`--out=` 成功后自动打印核验行：`Duration` 与视频流（编码/像素格式/分辨率/帧率）。改完预设跑配色纪律测试：`python scripts/audit-presets.py`（16 项检查，exit 1 即有违规）。
+
+## 确定性 (Determinism)
+
+- 时间**只**来自 `t`；禁止 `time.time()`、禁止帧间可变的全局状态。
+- 随机**只**来自 `env.rnd(seed)`，seed 用 `frame` 或镜头 id 派生——同一帧永远同一个生成器。
+- 昂贵的基底（meshgrid、投影矩阵、字体对象）在**模块导入时**算一次，不要每帧重建。
+- `render_at` 必须同步、幂等、可乱序调用（联系表会跳着取帧，多进程会并行取帧）。
+
+- Time comes only from `t`; randomness only from `env.rnd(seed)`; precompute grids/matrices/fonts at import time; `render_at` must be synchronous, idempotent and safe to call out of order.
+
+## 逐帧渲染 (Frame-by-frame rendering)
+
+帧写成 `frames/f00000.png`（五位序号，与 Chrome 引擎一致）；已存在的帧直接跳过，所以长渲染天然可断点续跑，`--force` 全部重来。编码：
+
+Frames go to `frames/f%05d.png`; existing frames are skipped, so long renders resume for free (`--force` to redo):
+
+```
+ffmpeg -framerate <fps> -start_number 0 -i frames/f%05d.png \
+  -c:v libx264 -preset medium -crf 17 -pix_fmt yuv420p \
+  -vf scale=trunc(iw/2)*2:trunc(ih/2)*2 -movflags +faststart out.mp4
+```
+
+封装音频：音频作第二输入，`-c:a aac -b:a 192k -shortest`，并 `-map 0:v:0 -map 1:a:0`。
+
+## 帧缓存签名 (Cache signature)
+
+引擎启动时把 `project.json` + `src/render.py` 的 sha1 存进 `frames/.signature`；不匹配就**自动清空帧缓存重渲**——改工程不再需要 `--force` 手动清（与 Chrome 引擎的 `signature.mjs` 同构）。`--force` 仍保留用于强制重渲同一份工程。
+
+At startup the engine hashes `project.json` + `src/render.py` into `frames/.signature`; a mismatch clears the cache automatically — no manual `--force` after edits.
+
+## 收尾通道 (FX stack)
+
+project.json 的 `fx` 块（与 Chrome 引擎同构）由引擎在 `render_at` 返回之后**统一施加**，全部 NumPy 向量化：`bloom`（亮度阈值提亮 + 两次 3×3 盒式模糊，加法混合）→ `chroma`（R/B 通道反向平移后按 `chromaAlpha` 混合）→ `scanlines`（每 `scanGap` 行乘性压暗 `scanAlpha`）→ `vignette`（径向渐晕，边缘最深 35%）→ `grain`（按 frame 播种的高斯颗粒，`grainAlpha` 控制幅度）。顺序固定；场景代码**不再自己做后期**；`fx` 缺省/为空对象则整条通道跳过。脚手架默认开 `bloom + vignette + grain`，与模板舞台配套。
+
+The `fx` block is applied after `render_at` in a fixed chain — bloom, chroma, scanlines, vignette, seeded grain — all vectorised NumPy. Scenes never implement post themselves; an empty `fx` skips the chain. The scaffold enables bloom + vignette + grain by default.
+
+## NumPy 逐像素技法 (Per-pixel techniques)
+
+**一切都先在 `float32` 里算，最后一次转 `uint8`。** 数组按 `[0,1]` 或 `[0,255]` 全程一个约定，`np.clip` 之后才 `astype(np.uint8)`——`uint8` 直接相加会静默回绕（`250+20=14`），这是最常见的花屏原因。
+
+**Everything is computed in `float32`, converted to `uint8` once at the end** with an explicit clip. `uint8` arithmetic wraps silently (`250+20=14`) — the classic source of garbage frames.
+
+核心原语 / the core primitives:
+
+```python
+Y, X = np.mgrid[0:h, 0:w]                       # 像素坐标网格
+fx, fy = (X + 0.5) / w * 2 - 1, (Y + 0.5) / h * 2 - 1   # 归一化 [-1,1]
+
+# SDF：圆 / 线段 / 矩形——比 Pillow 的逐形状绘制快，而且天然可插值
+d = np.sqrt((fx - cx)**2 + (fy - cy)**2) - r
+mask = np.clip(0.5 - d / aa, 0, 1)               # 抗锯齿边缘（aa ≈ 1.5/w）
+
+img += mask[..., None] * color                   # 合成用加法/lerp，别用 uint8
+img = 1 - (1 - img) * (1 - glow)                 # screen 混合，做发光不越界
+
+blur = (np.roll(img, 1, 0) + np.roll(img, -1, 0) +
+        np.roll(img, 1, 1) + np.roll(img, -1, 1)) * 0.25   # 3×3 盒式模糊 ×N 次 ≈ bloom
+```
+
+- 场类画面（正弦、干涉、格点、摩尔纹）用 `np.sin(a*X + b*Y + c*t)` 一把出全帧，永远不要 Python 循环逐像素。
+- 高频图案（密栅格、像素排序、1→4096 的进程树）会**混叠**：降频、或先把帧缩小再 `Image.resize(LANCZOS)` 放大回去（廉价的低通）。
+- 需要 Pillow 的便利（`ImageDraw`、字体）时，把数组转 `Image` 画完再 `np.asarray` 转回来；这条边界只在每帧 1–2 次。
+
+- Fields (sine, interference, grids, moiré) are one vectorised expression over the whole frame; never loop per pixel in Python. Downscale-then-LANCZOS-upscale is a cheap low-pass against aliasing.
+
+## Pillow 落字与收尾 (Type and finishing with Pillow)
+
+```python
+font = ImageFont.truetype("C:/Windows/Fonts/consola.ttf", 64)   # 系统字体，不联网
+d.text((x, y), line, font=font, fill=text_rgb, anchor="ls")       # l/s = 左下基线
+box = d.textbbox((0, 0), line, font=font)                         # 量宽：(x0,y0,x1,y1)
+```
+
+- **Pillow 的 `line/ellipse/polygon` 不抗锯齿**：要么走 NumPy SDF（推荐），要么整帧 2× 超采样画完再 `resize((w,h), LANCZOS)`。文字本身是抗锯齿的，不需要超采样。
+- 图层用 `RGBA` + `Image.alpha_composite`，最后 `convert("RGB")`——**返回值必须是 RGB、恰好 `width×height`**。
+- 字体按 `ImageFont.truetype` 的候选表逐个试，全部失败才 `ImageFont.load_default()`（默认字体很小，只够调试）。
+
+- Pillow's `line/ellipse/polygon` are **not** antialiased: use NumPy SDFs, or draw at 2× and downscale with LANCZOS. Text *is* antialiased. Always return RGB at exactly `width×height`.
+
+## 3D 透视投影 (3D perspective projection)
+
+不需要 WebGL：一个焦距、一个相机、画家算法。
+
+No WebGL needed: one focal length, one camera, painter's algorithm.
+
+```python
+def orbit(t, radius=4.0, height=0.9, speed=0.38):
+    return np.array([np.cos(t*speed)*radius, height, np.sin(t*speed)*radius])
+
+def project(P, eye, w, h, focal=1.6):
+    """P: (...,3) 世界坐标 -> (...,2) 像素坐标 + 深度。批量、向量化。"""
+    f = P - eye                                  # 相机空间
+    z = np.clip(-f[..., 2], 1e-3, None)          # 相机看向 -z
+    s = focal / z
+    return np.stack([w/2 + f[..., 0]*s*w/2, h/2 - f[..., 1]*s*h/2], -1), z
+```
+
+- **先排深度，再画**：`order = np.argsort(-z_mean)`，按从远到近画线框/多边形。没有 z-buffer，就没有 z-fighting——这正是 T5/T11 的老规矩。
+- 缩小到 `z` 很近的点会被 clip 掉（`np.clip` 防爆炸）；走廊、H 树、晶格巨构都是同一个投影换不同的几何。
+- 需要雾：`color = lerp(color, bg, 1 - exp(-z*fog))`，深度自动读得出体积。
+
+- Sort far-to-near once per frame and paint; clip near-z to avoid infinities. Fog = depth cue.
+
+## 严格栅格与字阶 (Strict grid and type scale)
+
+排版不是"大概放在中间"，是**坐标系**：
+
+Typography is a coordinate system, not "roughly centred":
+
+```python
+COLS, GUT, MARGIN = 12, 24, 64                  # 12 栏、栏距、页边距
+colw = (w - 2*MARGIN - (COLS-1)*GUT) / COLS
+def gx(c): return MARGIN + c*(colw + GUT)        # 第 c 栏的 x（0-based）
+BASE, LEAD = 24, 36                              # 基线节奏 / 行距 = 1.5×body
+
+SCALE = 1.25                                     # 音阶：小三度，1.25 倍
+sizes = [12, 15, 19, 24, 30, 37, 46, 58, 72]     # body=19 上下各推两级
+```
+
+- 每个元素落在**栏线与基线**上；镜头之间栅格不变，只有内容变——画面才像一个"世界"而不是一堆贴图。
+- **字阶只有一个"最响"**：上屏的歌词取字阶顶端，标题降两档，注释/遥测取底档。规则 5 的量化版。
+- 颜色只从六角色里取：正文 `text`，注释 `dim`，唯一重点 `hot`。
+
+- Elements land on column and baseline lines; the grid holds across shots so the video reads as one world. The lyric takes the top of the type scale — quantified rule 5.
+
+## 分段色彩脚本 (Segmented color script)
+
+`project.json` 里把全片按段落切成色彩章节，段内调色板稳定，段间**硬切**（或 0.3–0.5s 交叉溶解）——这是"色彩有叙事"的确切含义：
+
+Cut the film into color chapters in `project.json`. A palette holds *inside* a segment; segments change by hard cut (or a 0.3–0.5 s crossfade):
+
+```json
+"segments": [
+  { "id": "boot",   "t": 0,   "palette": { "bg": "#05070d", "base": "#7cffb2", "accent": "#35ff9b", "hot": "#ffd166", "text": "#e8ffe9", "dim": "#0d3b24" } },
+  { "id": "charge", "t": 26,  "palette": { "bg": "#0a0614", "base": "#22d3ee", "accent": "#818cf8", "hot": "#ff2fa0", "text": "#eef2ff", "dim": "#312e81" } },
+  { "id": "exit",   "t": 165, "palette": { "bg": "#f4f1e8", "base": "#141413", "accent": "#d97757", "hot": "#b91c1c", "text": "#141413", "dim": "#a8a29e" } }
+]
+```
+
+- **角色跨段守恒**：`base` 永远是主色、`hot` 永远只给全片最重要的那一个事件。段与段换的是"穿哪套衣服"，不是"谁是谁"——所以切段读起来像结构，而不是混乱。
+- 段边界**贴着段落标记**（intro/verse/chorusexit），不贴任意秒数。
+- 环境光跟着段走：雾色、bloom 色、暗角色全部从当前段的 `palette` 取。
+
+- Roles are conserved across segments (`base` stays the主色, `hot` stays reserved), so a cut reads as structure. Segment boundaries sit on section markers, not arbitrary seconds. Fog/bloom/vignette colors follow the current segment.
+
+## 坑 (Pitfalls)
+
+- **`uint8` 回绕** —— 全程 `float32`，最后 clip 一次。
+- **Pillow 形状不抗锯齿** —— SDF 或 2× 超采样。
+- **每帧重建 meshgrid/字体** —— 导入时算一次，否则渲染慢一个量级。
+- **`np.random` 全局状态** —— 用 `np.random.default_rng(seed)`，不要 `np.random.seed`。
+- **返回 RGBA 或尺寸不对** —— 引擎会直接报错；`convert("RGB")` + 精确尺寸。
+- **高频纹理闪烁** —— 逐帧的像素级噪点要看联系表；随机种子绑 `frame` 才能复现。
+- **看都不看就交付** —— 联系表照旧，规矩不变。
+
+- `uint8` wraparound, non-antialiased shapes, rebuilding grids/fonts per frame, global `np.random` state, wrong return mode/size, high-frequency shimmer — all caught by the contact sheet. The rules never change.

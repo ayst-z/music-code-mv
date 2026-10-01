@@ -24,6 +24,12 @@
     "grainAlpha": 0.35
   },
   "duration": 18,
+  "three": {
+    "geometry": "line-art",
+    "camera": { "mode": "zoom", "radius": 6.0, "height": 0.3, "speed": 0.12 },
+    "post": { "bloom": 0, "threshold": 0.15, "chroma": false, "scanlines": false },
+    "roles": { "background": "bg", "fog": "bg", "wire": "base", "emissive": "accent", "flare": "hot", "label": "text" }
+  },
   "storyboard": {
     "summary": "一页纸上的独白：笔画先落，字后到，最后只剩一枚朱砂印。",
     "shots": [

@@ -1,0 +1,45 @@
+{
+  "id": "llama",
+  "title": "Llama 蓝 / Llama Graph",
+  "summary": "Meta 蓝节点图穿行在暗底上：万物皆点、关系成网。黄色是唯一 hot，留给单点事件。",
+  "palette": {
+    "bg": "#192830",
+    "dim": "#1c3b6e",
+    "base": "#0064e0",
+    "accent": "#0081fb",
+    "hot": "#ffd23f",
+    "text": "#e7f0ff"
+  },
+  "fx": {
+    "chroma": false, "chromaAmount": 1, "chromaAlpha": 0.12,
+    "scanlines": false, "scanAlpha": 0.08, "scanGap": 3,
+    "bloom": true, "bloomAlpha": 0.4,
+    "vignette": true,
+    "grain": true, "grainAlpha": 0.35
+  },
+  "duration": 20,
+  "three": {
+    "geometry": "node-graph",
+    "camera": { "mode": "fly-through", "radius": 8.0, "height": 0.3, "speed": 1.0 },
+    "post": { "bloom": 0.8, "threshold": 0.15, "chroma": false, "scanlines": false },
+    "roles": { "background": "bg", "fog": "bg", "wire": "base", "emissive": "accent", "flare": "hot", "label": "text" }
+  },
+  "storyboard": {
+    "summary": "从一个点长成一张网：关系、碎片、翻转，最后死掉的单元不再亮。",
+    "shots": [
+      { "id": "01-point", "start": 0, "end": 3.5, "what": "画面正中一个点，向日葵散列逐籽落位（M6）", "style": "T6", "lyric": "万物先是一个点" },
+      { "id": "02-graph", "start": 3.5, "end": 7.5, "what": "节点图长出边，注意力式连线低 alpha 分层（M6/M5）", "style": "T12", "lyric": "关系长成网络" },
+      { "id": "03-bit", "start": 7.5, "end": 11.5, "what": "F→M 只翻一个比特，莫尔条纹随之呼吸（M7）", "style": "T9", "lyric": "翻转一个比特" },
+      { "id": "04-relu", "start": 11.5, "end": 15.5, "what": "ReLU 死亡：z 转负的格子永远熄灭（M13）", "style": "T12", "lyric": "死掉的神经元不亮" },
+      { "id": "05-voronoi", "start": 15.5, "end": 18, "what": "网被 Voronoi 碎成块，滑向各自的坑（M9）", "style": "T9", "lyric": "光标呼吸一次" },
+      { "id": "06-end", "start": 18, "end": 20, "what": "碎块收回单点，光标闪两下（M17）", "style": "T1", "lyric": "—" }
+    ]
+  },
+  "lyrics": [
+    "[00:02.00]万物先是一个点",
+    "[00:06.00]关系长成网络",
+    "[00:10.00]翻转一个比特",
+    "[00:14.00]死掉的神经元不亮",
+    "[00:18.00]光标呼吸一次"
+  ]
+}

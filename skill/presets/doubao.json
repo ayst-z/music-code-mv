@@ -1,0 +1,45 @@
+{
+  "id": "doubao",
+  "title": "Doubao 豆包蓝 / Doubao Blue",
+  "summary": "官方豆包蓝 #0057ff + #4dffef 亮蓝压在深灰 #191919 上：消费级、明快、圆角排版。暖橙 hot 一段一次。",
+  "palette": {
+    "bg": "#191919",
+    "dim": "#24344f",
+    "base": "#0057ff",
+    "accent": "#4d8eff",
+    "hot": "#ff9500",
+    "text": "#eaf1ff"
+  },
+  "fx": {
+    "chroma": false, "chromaAmount": 1, "chromaAlpha": 0.12,
+    "scanlines": false, "scanAlpha": 0.06, "scanGap": 3,
+    "bloom": true, "bloomAlpha": 0.4,
+    "vignette": true,
+    "grain": true, "grainAlpha": 0.3
+  },
+  "duration": 20,
+  "three": {
+    "geometry": "rounded-blocks",
+    "camera": { "mode": "orbit", "radius": 5.2, "height": 1.0, "speed": 0.3 },
+    "post": { "bloom": 0.7, "threshold": 0.15, "chroma": false, "scanlines": false },
+    "roles": { "background": "bg", "fog": "bg", "wire": "base", "emissive": "accent", "flare": "hot", "label": "text" }
+  },
+  "storyboard": {
+    "summary": "蓝色方块世界：等距堆叠、逐行对话、一次暖橙点睛，收在光标上。",
+    "shots": [
+      { "id": "01-iso", "start": 0, "end": 3.5, "what": "等距蓝块沿对角波呼吸堆起（M1 世界）", "style": "T11", "lyric": "方块先摞起来" },
+      { "id": "02-log", "start": 3.5, "end": 7.5, "what": "对话逐行敲出，回车时整行闪一次（M1）", "style": "T1 + T2", "lyric": "一句话一行行落" },
+      { "id": "03-grid", "start": 7.5, "end": 11.5, "what": "12 栏栅格铺开，字阶逐级排上去（M3）", "style": "T2", "lyric": "格子先站好队" },
+      { "id": "04-flare", "start": 11.5, "end": 15.5, "what": "一个方块翻成暖橙，全片唯一 hot（M7）", "style": "T9", "lyric": "橙色只准出现一次" },
+      { "id": "05-shatter", "start": 15.5, "end": 18, "what": "Voronoi 把方块阵碎开又归位（M9）", "style": "T9", "lyric": "碎开的都回原位" },
+      { "id": "06-end", "start": 18, "end": 20, "what": "方块退回 bg，光标闪两下（M17）", "style": "T1", "lyric": "—" }
+    ]
+  },
+  "lyrics": [
+    "[00:02.00]方块先摞起来",
+    "[00:06.00]一句话一行行落",
+    "[00:10.00]格子先站好队",
+    "[00:14.00]橙色只准出现一次",
+    "[00:18.00]碎开的都回原位"
+  ]
+}

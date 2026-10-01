@@ -78,6 +78,7 @@ if (presetId) {
   if (preset.palette) project.palette = { ...project.palette, ...preset.palette };
   if (preset.fx) project.fx = { ...project.fx, ...preset.fx };
   if (preset.duration) project.duration = preset.duration;
+  if (preset.three) project.three = preset.three;   // Three.js 镜头逻辑，场景里经 env.project.three 读取
   project.preset = preset.id;
   fs.writeFileSync(projFile, JSON.stringify(project, null, 2) + NL, 'utf8');
   if (preset.storyboard && Array.isArray(preset.storyboard.shots)) {

@@ -1,0 +1,45 @@
+{
+  "id": "midjourney",
+  "title": "Midjourney 航海蓝 / Midjourney Navy",
+  "summary": "官方徽记蓝 #4093d4 + 藏青 #172c50，其余近单色：画面自己说话，UI 退到 dim。金色 hot 是画框上唯一一档光。",
+  "palette": {
+    "bg": "#172c50",
+    "dim": "#2a4370",
+    "base": "#4093d4",
+    "accent": "#9fc7ea",
+    "hot": "#f2c14e",
+    "text": "#ffffff"
+  },
+  "fx": {
+    "chroma": false, "chromaAmount": 1, "chromaAlpha": 0.1,
+    "scanlines": false, "scanAlpha": 0.06, "scanGap": 3,
+    "bloom": true, "bloomAlpha": 0.45,
+    "vignette": true,
+    "grain": true, "grainAlpha": 0.5
+  },
+  "duration": 20,
+  "three": {
+    "geometry": "floating-monoliths",
+    "camera": { "mode": "arc", "radius": 6.0, "height": 1.6, "speed": 0.25 },
+    "post": { "bloom": 0.9, "threshold": 0.15, "chroma": false, "scanlines": false },
+    "roles": { "background": "bg", "fog": "bg", "wire": "base", "emissive": "accent", "flare": "hot", "label": "text" }
+  },
+  "storyboard": {
+    "summary": "藏青雾里的巨构逐张显影，像在提示词里等一张图慢慢成形。",
+    "shots": [
+      { "id": "01-fog", "start": 0, "end": 3.5, "what": "藏青雾中浮出巨构剪影，深度雾压向 bg（M2）", "style": "T5 + T6", "lyric": "雾里先有个轮廓" },
+      { "id": "02-dither", "start": 3.5, "end": 7.5, "what": "ASCII 抖动把剪影重新显影成字符（M2/T7）", "style": "T7", "lyric": "一点一点显影" },
+      { "id": "03-grid", "start": 7.5, "end": 11.5, "what": "等距 T11 网格上巨构解构成方块世界", "style": "T11", "lyric": "方块撑起画面" },
+      { "id": "04-gold", "start": 11.5, "end": 15.5, "what": "画框边缘亮起一档金光，全片唯一 hot（M4 星芒）", "style": "T4", "lyric": "金边只亮一次" },
+      { "id": "05-shatter", "start": 15.5, "end": 18, "what": "巨构 Voronoi 碎裂，碎片向下沉（M9）", "style": "T9", "lyric": "沉下去的都不打捞" },
+      { "id": "06-end", "start": 18, "end": 20, "what": "藏青收成纯黑，光标印上 exit code（M17）", "style": "T1", "lyric": "—" }
+    ]
+  },
+  "lyrics": [
+    "[00:02.00]雾里先有个轮廓",
+    "[00:06.00]一点一点显影",
+    "[00:10.00]方块撑起画面",
+    "[00:14.00]金边只亮一次",
+    "[00:18.00]沉下去的都不打捞"
+  ]
+}

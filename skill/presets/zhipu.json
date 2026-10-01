@@ -1,0 +1,45 @@
+{
+  "id": "zhipu",
+  "title": "Zhipu 智谱蓝 / Zhipu GLM",
+  "summary": "官方智谱蓝 #1679ff，暗底 #191918；官方点缀薄荷 #3effb8 与丁香 #a49dff 直接当 accent/hot 用——三个点缀色都是品牌自带。",
+  "palette": {
+    "bg": "#191918",
+    "dim": "#1b2a44",
+    "base": "#1679ff",
+    "accent": "#a49dff",
+    "hot": "#3effb8",
+    "text": "#ededed"
+  },
+  "fx": {
+    "chroma": false, "chromaAmount": 1, "chromaAlpha": 0.12,
+    "scanlines": false, "scanAlpha": 0.08, "scanGap": 3,
+    "bloom": true, "bloomAlpha": 0.45,
+    "vignette": true,
+    "grain": true, "grainAlpha": 0.35
+  },
+  "duration": 20,
+  "three": {
+    "geometry": "data-columns",
+    "camera": { "mode": "track", "radius": 5.6, "height": 0.6, "speed": 0.45 },
+    "post": { "bloom": 0.8, "threshold": 0.15, "chroma": false, "scanlines": false },
+    "roles": { "background": "bg", "fog": "bg", "wire": "base", "emissive": "accent", "flare": "hot", "label": "text" }
+  },
+  "storyboard": {
+    "summary": "论文与数据的镜头语言：曲线、热力格、矩阵，薄荷绿只点亮一个格子。",
+    "shots": [
+      { "id": "01-curve", "start": 0, "end": 3.5, "what": "奖励曲线平滑上扬，抖动来自种子 PRNG（M5）", "style": "T12", "lyric": "曲线先往上走" },
+      { "id": "02-heat", "start": 3.5, "end": 7.5, "what": "注意力热力格逐格量化点亮（M5）", "style": "T12", "lyric": "格子逐个发亮" },
+      { "id": "03-matrix", "start": 7.5, "end": 11.5, "what": "token 矩阵排进严格栅格，字阶分层（M3/M5）", "style": "T2", "lyric": "矩阵站进栅格里" },
+      { "id": "04-lilac", "start": 11.5, "end": 15.5, "what": "丁香 accent 扫过整片结构，仅描边（M7 莫尔）", "style": "T9", "lyric": "紫色只走边缘" },
+      { "id": "05-mint", "start": 15.5, "end": 18, "what": "薄荷 hot 单点点亮一格即熄（M12 单格事件）", "style": "T12", "lyric": "绿格子只亮一次" },
+      { "id": "06-end", "start": 18, "end": 20, "what": "数据全部退场，光标与 exit code（M17）", "style": "T1", "lyric": "—" }
+    ]
+  },
+  "lyrics": [
+    "[00:02.00]曲线先往上走",
+    "[00:06.00]格子逐个发亮",
+    "[00:10.00]矩阵站进栅格里",
+    "[00:14.00]紫色只走边缘",
+    "[00:18.00]绿格子只亮一次"
+  ]
+}

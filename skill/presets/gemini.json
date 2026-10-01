@@ -1,0 +1,45 @@
+{
+  "id": "gemini",
+  "title": "Gemini 蓝紫渐变 / Gemini Gradient",
+  "summary": "官方渐变三段 #4285f4→#9b72cb→#d96570 压在深灰上：光谱、波形与弧线运镜。hot 是渐变的玫红端，只给一个事件。",
+  "palette": {
+    "bg": "#1f1f1f",
+    "dim": "#2a2c33",
+    "base": "#4285f4",
+    "accent": "#9b72cb",
+    "hot": "#d96570",
+    "text": "#e3e3e3"
+  },
+  "fx": {
+    "chroma": true, "chromaAmount": 1, "chromaAlpha": 0.15,
+    "scanlines": false, "scanAlpha": 0.08, "scanGap": 3,
+    "bloom": true, "bloomAlpha": 0.45,
+    "vignette": true,
+    "grain": true, "grainAlpha": 0.3
+  },
+  "duration": 20,
+  "three": {
+    "geometry": "gradient-ribbon",
+    "camera": { "mode": "arc", "radius": 5.0, "height": 1.2, "speed": 0.4 },
+    "post": { "bloom": 0.8, "threshold": 0.15, "chroma": false, "scanlines": false },
+    "roles": { "background": "bg", "fog": "bg", "wire": "base", "emissive": "accent", "flare": "hot", "label": "text" }
+  },
+  "storyboard": {
+    "summary": "一条被光谱讲出来的渐变：波形、频率、星系，收进一个暖橙落点。",
+    "shots": [
+      { "id": "01-spectrum", "start": 0, "end": 3.5, "what": "444/472/503 nm 三条吸收峰按真值起身（M6）", "style": "T12", "lyric": "光谱先开口" },
+      { "id": "02-lassie", "start": 3.5, "end": 7.5, "what": "利萨茹把两个频率锁成一个闭合环（M8）", "style": "T8", "lyric": "两个频率锁在一起" },
+      { "id": "03-galaxy", "start": 7.5, "end": 11.5, "what": "三旋臂星系在标题下缓转，蓝紫渐变扫过（M2）", "style": "T6 + T10", "lyric": "星系在标题下转" },
+      { "id": "04-envelope", "start": 11.5, "end": 15.5, "what": "切线包络出曲线，渐变沿弧长流动（M3/M4）", "style": "T5", "lyric": "每条曲线都有名字" },
+      { "id": "05-warm", "start": 15.5, "end": 18, "what": "暖橙 hot 沿 ribbon 落到唯一一处光点（M4 星芒）", "style": "T2", "lyric": "渐变收进黑场" },
+      { "id": "06-end", "start": 18, "end": 20, "what": "渐变逐段熄回 bg，光标印上 exit code", "style": "T1", "lyric": "—" }
+    ]
+  },
+  "lyrics": [
+    "[00:02.00]光谱先开口",
+    "[00:06.00]两个频率锁在一起",
+    "[00:10.00]星系在标题下转",
+    "[00:14.00]每条曲线都有名字",
+    "[00:18.00]渐变收进黑场"
+  ]
+}

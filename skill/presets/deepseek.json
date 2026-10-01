@@ -1,0 +1,45 @@
+{
+  "id": "deepseek",
+  "title": "DeepSeek 蓝黑 / DeepSeek Ink",
+  "summary": "深蓝自发光压在近黑上：推理链、深空与晶格巨构。琥珀是唯一 hot，留给整片最重要的那一次事件。",
+  "palette": {
+    "bg": "#0f0f0f",
+    "dim": "#1e2a4a",
+    "base": "#4d6bfe",
+    "accent": "#73a3d2",
+    "hot": "#ffb020",
+    "text": "#e6ecff"
+  },
+  "fx": {
+    "chroma": true, "chromaAmount": 1, "chromaAlpha": 0.12,
+    "scanlines": false, "scanAlpha": 0.08, "scanGap": 3,
+    "bloom": true, "bloomAlpha": 0.45,
+    "vignette": true,
+    "grain": true, "grainAlpha": 0.35
+  },
+  "duration": 20,
+  "three": {
+    "geometry": "particle-galaxy",
+    "camera": { "mode": "orbit", "radius": 6.5, "height": 1.4, "speed": 0.22 },
+    "post": { "bloom": 1.0, "threshold": 0.15, "chroma": true, "scanlines": false },
+    "roles": { "background": "bg", "fog": "bg", "wire": "base", "emissive": "accent", "flare": "hot", "label": "text" }
+  },
+  "storyboard": {
+    "summary": "一台在深空里推理的机器：晶格、链条、极限，最后坍缩回一个点。",
+    "shots": [
+      { "id": "01-lattice", "start": 0, "end": 3.5, "what": "光线步进的晶格巨构从雾里亮起（M2）", "style": "T5 + T6", "lyric": "深空里有东西在算" },
+      { "id": "02-chain", "start": 3.5, "end": 7.5, "what": "推理链逐节点亮，节点蓝、连线 dim（M1/M5）", "style": "T1 + T12", "lyric": "链条一节节点亮" },
+      { "id": "03-limit", "start": 7.5, "end": 11.5, "what": "ε–N 极限里 N 一格格推大，台阶被量化（M3）", "style": "T12", "lyric": "极限是一格一格" },
+      { "id": "04-rectify", "start": 11.5, "end": 15.5, "what": "全波整流把 sin 折成 |sin|，RC 滤波抹平（M4）", "style": "T8", "lyric": "波形被折成直线" },
+      { "id": "05-collapse", "start": 15.5, "end": 18, "what": "数字逼近 1e309，琥珀 hot 点亮一次即熄（M11）", "style": "T3", "lyric": "最后只剩一个点" },
+      { "id": "06-reboot", "start": 18, "end": 20, "what": "星系倒放收束成单点，屏幕留一枚光标（M17）", "style": "T1 + T4", "lyric": "—" }
+    ]
+  },
+  "lyrics": [
+    "[00:02.00]深空里有东西在算",
+    "[00:06.00]链条一节节点亮",
+    "[00:10.00]极限是一格一格",
+    "[00:14.00]波形被折成直线",
+    "[00:18.00]最后只剩一个点"
+  ]
+}

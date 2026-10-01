@@ -1,0 +1,45 @@
+{
+  "id": "claude",
+  "title": "Claude 橙白 / Claude Clay",
+  "summary": "Anthropic 象牙白纸面 + 赤陶橙：关掉色差与 bloom，唯一重色是朱砂。批注、线稿与写作类镜头的气质；浅色纪律见 styles.md。",
+  "palette": {
+    "bg": "#f0eee6",
+    "dim": "#b0aea5",
+    "base": "#d97757",
+    "accent": "#e8895f",
+    "hot": "#c03a1f",
+    "text": "#141413"
+  },
+  "fx": {
+    "chroma": false, "chromaAmount": 1, "chromaAlpha": 0.1,
+    "scanlines": false, "scanAlpha": 0.06, "scanGap": 3,
+    "bloom": false, "bloomAlpha": 0.3,
+    "vignette": true,
+    "grain": true, "grainAlpha": 0.3
+  },
+  "duration": 20,
+  "three": {
+    "geometry": "paper-lattice",
+    "camera": { "mode": "push-in", "radius": 5.0, "height": 0.5, "speed": 0.18 },
+    "post": { "bloom": 0.5, "threshold": 0.15, "chroma": false, "scanlines": false },
+    "roles": { "background": "bg", "fog": "bg", "wire": "base", "emissive": "accent", "flare": "hot", "label": "text" }
+  },
+  "storyboard": {
+    "summary": "一本被批注的几何书：定义、图版、一次证明，最后停在句号上。",
+    "shots": [
+      { "id": "01-note", "start": 0, "end": 3.5, "what": "象牙纸上逐行落下批注，朱砂圈出一个词（M3 定义）", "style": "T1 + T4", "lyric": "把定义写成批注" },
+      { "id": "02-plate", "start": 3.5, "end": 7.5, "what": "Byrne 式彩点图版翻开，x²+y²=1 逐点描出（M3）", "style": "T5", "lyric": "一句话多说一遍" },
+      { "id": "03-tangent", "start": 7.5, "end": 11.5, "what": "切线族包络出曲线，密处泛橙（M3/M4）", "style": "T5 + T12", "lyric": "图版慢慢翻开" },
+      { "id": "04-heart", "start": 11.5, "end": 15.5, "what": "r=1−sinθ 心形描完最后一段，落一枚朱砂章（M14）", "style": "T2", "lyric": "心形是最后的证明" },
+      { "id": "05-margin", "start": 15.5, "end": 18, "what": "纸面只剩页边距与栅格，字退到 dim（M15 留白）", "style": "T8", "lyric": "光标停在句号上" },
+      { "id": "06-end", "start": 18, "end": 20, "what": "合上：页脚印出 exit code，朱砂一闪即收", "style": "T1", "lyric": "—" }
+    ]
+  },
+  "lyrics": [
+    "[00:02.00]把定义写成批注",
+    "[00:06.00]一句话多说一遍",
+    "[00:10.00]图版慢慢翻开",
+    "[00:14.00]心形是最后的证明",
+    "[00:18.00]光标停在句号上"
+  ]
+}
