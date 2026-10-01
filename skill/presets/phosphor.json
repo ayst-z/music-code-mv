@@ -1,0 +1,79 @@
+{
+  "id": "phosphor",
+  "title": "磷光终端 / Phosphor",
+  "summary": "纯黑底 + 磷绿字，扫描线压到最重，字体发光。适合纯排版与终端风格镜头。",
+  "palette": {
+    "bg": "#020604",
+    "dim": "#0d3b24",
+    "base": "#35ff9b",
+    "accent": "#7cffb2",
+    "hot": "#ffd166",
+    "text": "#d8ffe9"
+  },
+  "fx": {
+    "chroma": true,
+    "chromaAmount": 1,
+    "chromaAlpha": 0.08,
+    "scanlines": true,
+    "scanAlpha": 0.22,
+    "scanGap": 2,
+    "bloom": true,
+    "bloomAlpha": 0.35,
+    "vignette": true,
+    "grain": true,
+    "grainAlpha": 0.3
+  },
+  "duration": 20,
+  "storyboard": {
+    "summary": "一台不肯关机的老机器，用磷光把话一句句打出来。",
+    "shots": [
+      {
+        "id": "01-post",
+        "start": 0,
+        "end": 3.5,
+        "what": "自检：光标跳动、显存被逐行点亮",
+        "style": "T1 终端",
+        "lyric": "—"
+      },
+      {
+        "id": "02-type",
+        "start": 3.5,
+        "end": 8,
+        "what": "歌词逐字敲出，回车时整行闪一次",
+        "style": "T2 打字机",
+        "lyric": "第一句 → 第二句"
+      },
+      {
+        "id": "03-scroll",
+        "start": 8,
+        "end": 12,
+        "what": "长长的一段输出向上滚走，只留一行在中央",
+        "style": "T1 + T9",
+        "lyric": "第三句"
+      },
+      {
+        "id": "04-cursor",
+        "start": 12,
+        "end": 16,
+        "what": "屏幕只剩一个光标在呼吸，一声采样落下就黑屏",
+        "style": "T8 留白",
+        "lyric": "第四句"
+      },
+      {
+        "id": "05-boot",
+        "start": 16,
+        "end": 20,
+        "what": "重新开机，标题在最后一次闪烁里定型",
+        "style": "T4 CRT",
+        "lyric": "—"
+      }
+    ]
+  },
+  "lyrics": [
+    "[00:03.50]把这里换成你的第一句",
+    "[00:05.50]把这里换成你的第二句",
+    "[00:08.00]整段输出都会滚走",
+    "[00:12.00]只留一句在屏幕中央",
+    "[00:16.00]重新开机"
+  ]
+}

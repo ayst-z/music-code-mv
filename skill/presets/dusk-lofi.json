@@ -1,0 +1,79 @@
+{
+  "id": "dusk-lofi",
+  "title": "落日低保真 / Dusk Lo-Fi",
+  "summary": "暖橙与玫红在紫黑天空里化开，bloom 柔一点、颗粒重一点。适合情绪段落与长镜头。",
+  "palette": {
+    "bg": "#14101c",
+    "dim": "#3b2a4d",
+    "base": "#ffb37a",
+    "accent": "#ff7a9c",
+    "hot": "#ffd166",
+    "text": "#ffeede"
+  },
+  "fx": {
+    "chroma": true,
+    "chromaAmount": 2,
+    "chromaAlpha": 0.12,
+    "scanlines": true,
+    "scanAlpha": 0.06,
+    "scanGap": 3,
+    "bloom": true,
+    "bloomAlpha": 0.7,
+    "vignette": true,
+    "grain": true,
+    "grainAlpha": 0.55
+  },
+  "duration": 24,
+  "storyboard": {
+    "summary": "太阳落下去的四分钟里，画面越来越暖，最后只剩一条地平线。",
+    "shots": [
+      {
+        "id": "01-sky",
+        "start": 0,
+        "end": 5,
+        "what": "渐变色场缓慢推移，地平线第一次亮起",
+        "style": "T3 渐变场",
+        "lyric": "—"
+      },
+      {
+        "id": "02-lyric",
+        "start": 5,
+        "end": 10,
+        "what": "歌词在暖光里浮起，字下有柔和光晕",
+        "style": "T2 + bloom",
+        "lyric": "第一句 → 第二句"
+      },
+      {
+        "id": "03-crowd",
+        "start": 10,
+        "end": 15,
+        "what": "一层剪影人群随节奏轻微起伏",
+        "style": "T10 粒子/剪影",
+        "lyric": "第三句"
+      },
+      {
+        "id": "04-drive",
+        "start": 15,
+        "end": 20,
+        "what": "侧向掠过的一排灯光，透视拉伸",
+        "style": "T5 + T6",
+        "lyric": "第四句 → 第五句"
+      },
+      {
+        "id": "05-dawn",
+        "start": 20,
+        "end": 24,
+        "what": "暖色褪去，地平线收成一条细线后熄掉",
+        "style": "T8 收束",
+        "lyric": "—"
+      }
+    ]
+  },
+  "lyrics": [
+    "[00:05.00]把这里换成你的第一句",
+    "[00:07.50]把这里换成你的第二句",
+    "[00:10.00]整段路都在往下沉",
+    "[00:15.00]把这里换成你的第四句",
+    "[00:18.00]天亮之前"
+  ]
+}

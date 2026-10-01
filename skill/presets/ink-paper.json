@@ -1,0 +1,79 @@
+{
+  "id": "ink-paper",
+  "title": "纸墨 / Ink & Paper",
+  "summary": "浅色纸面 + 墨色字，唯一的重色是朱砂。关掉色差与 bloom，留颗粒，像印出来的一页。",
+  "palette": {
+    "bg": "#f4f1ea",
+    "dim": "#9a9284",
+    "base": "#2b2b2b",
+    "accent": "#b4451f",
+    "hot": "#d9480f",
+    "text": "#16130f"
+  },
+  "fx": {
+    "chroma": false,
+    "chromaAmount": 0,
+    "chromaAlpha": 0,
+    "scanlines": false,
+    "scanAlpha": 0,
+    "scanGap": 4,
+    "bloom": false,
+    "bloomAlpha": 0,
+    "vignette": true,
+    "grain": true,
+    "grainAlpha": 0.35
+  },
+  "duration": 18,
+  "storyboard": {
+    "summary": "一页纸上的独白：笔画先落，字后到，最后只剩一枚朱砂印。",
+    "shots": [
+      {
+        "id": "01-blank",
+        "start": 0,
+        "end": 3,
+        "what": "空白纸面，纤维与颗粒慢慢显影，标题以墨色落下",
+        "style": "T7 极简排版",
+        "lyric": "—"
+      },
+      {
+        "id": "02-stroke",
+        "start": 3,
+        "end": 7,
+        "what": "一笔墨迹自左向右生长，停在句读处",
+        "style": "T5 手绘线条",
+        "lyric": "第一句"
+      },
+      {
+        "id": "03-lyric",
+        "start": 7,
+        "end": 11,
+        "what": "整句竖排占满画面，字重随呼吸起伏",
+        "style": "T2 动态字",
+        "lyric": "第二句 → 第三句"
+      },
+      {
+        "id": "04-seal",
+        "start": 11,
+        "end": 15,
+        "what": "朱砂印从中心压下来，纸面轻微回弹",
+        "style": "T7 + 单一事件",
+        "lyric": "第四句"
+      },
+      {
+        "id": "05-fade",
+        "start": 15,
+        "end": 18,
+        "what": "墨色向纸面退去，只留下标题与印",
+        "style": "T8 收束",
+        "lyric": "—"
+      }
+    ]
+  },
+  "lyrics": [
+    "[00:03.00]把这里换成你的第一句",
+    "[00:07.00]把这里换成你的第二句",
+    "[00:09.00]这一句要留白给呼吸",
+    "[00:11.20]把这里换成你的第四句",
+    "[00:15.00]落款"
+  ]
+}

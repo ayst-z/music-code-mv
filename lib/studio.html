@@ -1,0 +1,408 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MV 工坊</title>
+<link rel="icon" href="data:,">
+<script>
+  // 父窗口（DSH 客户端插件）会在 iframe URL 上带 theme=；先按它上色，避免闪一下。
+  (function () {
+    try {
+      var m = /[?&]theme=(dark|light)/.exec(location.search);
+      if (m) document.documentElement.setAttribute('data-theme', m[1]);
+    } catch (e) { /* ignore */ }
+  })();
+</script>
+<style>
+  :root {
+    /* 主题兜底值：没有 DSH 令牌时用 / fallbacks when DSH tokens are absent */
+    --mv-fb-bg: #fafafa; --mv-fb-surface: #ffffff; --mv-fb-raised: #f2f3f5;
+    --mv-fb-text: #17181a; --mv-fb-dim: #6b7280; --mv-fb-line: rgba(0,0,0,.10);
+    --mv-fb-hover: rgba(0,0,0,.045);
+    --mv-fb-accent: #2f6bff; --mv-fb-ok: #0f9d58; --mv-fb-warn: #b7791f; --mv-fb-bad: #d64545;
+    --mv-radius: 10px;
+    color-scheme: light;
+  }
+  :root[data-theme="dark"] {
+    --mv-fb-bg: #16171a; --mv-fb-surface: #1d1e22; --mv-fb-raised: #26272c;
+    --mv-fb-text: #ececee; --mv-fb-dim: #9aa0aa; --mv-fb-line: rgba(255,255,255,.10);
+    --mv-fb-hover: rgba(255,255,255,.06);
+    --mv-fb-accent: #6f9dff; --mv-fb-ok: #4ade80; --mv-fb-warn: #e2b04a; --mv-fb-bad: #f07171;
+    color-scheme: dark;
+  }
+  :root {
+    /* 优先用 DSH 自己的设计令牌 / prefer the host's own design tokens */
+    --mv-bg: var(--dsw-alias-bg-base, var(--mv-fb-bg));
+    --mv-surface: var(--dsw-alias-bg-layer-1, var(--mv-fb-surface));
+    --mv-raised: var(--dsw-alias-interactive-bg-hover, var(--mv-fb-raised));
+    --mv-text: var(--dsw-alias-label-primary, var(--mv-fb-text));
+    --mv-dim: var(--dsw-alias-label-tertiary, var(--mv-fb-dim));
+    --mv-line: var(--dsw-alias-border-l2, var(--mv-fb-line));
+    --mv-hover: var(--dsw-alias-interactive-bg-hover, var(--mv-fb-hover));
+    --mv-accent: var(--dsw-alias-state-business-primary, var(--mv-fb-accent));
+    --mv-ok: var(--dsw-alias-state-success-primary, var(--mv-fb-ok));
+    --mv-warn: var(--dsw-alias-state-warn-primary, var(--mv-fb-warn));
+    --mv-bad: var(--dsw-alias-state-error-primary, var(--mv-fb-bad));
+    --mv-font: var(--dsw-font-family, -apple-system, "Segoe UI", "Microsoft YaHei", system-ui, sans-serif);
+    --mv-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Cascadia Mono", monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--mv-bg); color: var(--mv-text);
+    font: 13px/1.55 var(--mv-font);
+    -webkit-font-smoothing: antialiased;
+  }
+  header {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 12px; border-bottom: 1px solid var(--mv-line);
+    background: var(--mv-bg); position: sticky; top: 0; z-index: 5;
+  }
+  header h1 { font-size: 13px; font-weight: 600; margin: 0; letter-spacing: .02em; }
+  .spacer { flex: 1 1 auto; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--mv-dim); flex: none; }
+  .dot.ok { background: var(--mv-ok); }
+  .dot.bad { background: var(--mv-bad); }
+  .dot.run { background: var(--mv-warn); }
+  button {
+    font: inherit; color: var(--mv-text); background: transparent;
+    border: 1px solid var(--mv-line); border-radius: 8px; padding: 4px 10px; cursor: pointer;
+  }
+  button:hover { background: var(--mv-hover); }
+  button:disabled { opacity: .4; cursor: not-allowed; background: transparent; }
+  button.primary { color: var(--mv-accent); border-color: var(--mv-accent); }
+  button.danger { color: var(--mv-bad); border-color: var(--mv-bad); }
+  main { display: grid; grid-template-columns: minmax(180px, 232px) 1fr; height: calc(100% - 39px); }
+  @media (max-width: 640px) { main { grid-template-columns: 1fr; height: auto; } }
+  .list { border-right: 1px solid var(--mv-line); overflow: auto; padding: 6px; }
+  .list button.item {
+    display: block; width: 100%; text-align: left; border: 1px solid transparent;
+    border-radius: var(--mv-radius); padding: 7px 9px; margin-bottom: 2px; background: transparent;
+  }
+  .list button.item:hover { background: var(--mv-hover); }
+  .list button.item[aria-current="true"] { background: var(--mv-hover); border-color: var(--mv-line); }
+  .list .item b { display: block; font-size: 13px; font-weight: 600; }
+  .list .item small { color: var(--mv-dim); font: 11px/1.5 var(--mv-mono); }
+  .detail { overflow: auto; padding: 10px 12px 32px; }
+  .card { border: 1px solid var(--mv-line); border-radius: var(--mv-radius); padding: 10px 12px; margin-bottom: 10px; background: var(--mv-surface); }
+  .card h2 { margin: 0 0 8px; font-size: 12px; font-weight: 600; color: var(--mv-dim); }
+  .meta { display: flex; flex-wrap: wrap; gap: 4px 14px; font: 12px/1.7 var(--mv-mono); color: var(--mv-dim); }
+  .meta b { color: var(--mv-text); font-weight: 500; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; }
+  .row + .row { margin-top: 8px; }
+  label.field { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--mv-dim); }
+  input[type=number], input[type=text], select {
+    font: 12px var(--mv-mono); color: var(--mv-text); background: var(--mv-bg);
+    border: 1px solid var(--mv-line); border-radius: 8px; padding: 4px 7px; width: 92px;
+  }
+  input[type=text] { width: 116px; }
+  select { width: auto; }
+  .bar { height: 6px; border-radius: 999px; background: var(--mv-hover); overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 0%; background: var(--mv-accent); transition: width .25s; }
+  pre {
+    margin: 8px 0 0; padding: 8px 10px; background: var(--mv-bg); border: 1px solid var(--mv-line);
+    border-radius: 8px; font: 11px/1.55 var(--mv-mono); max-height: 200px; overflow: auto; white-space: pre-wrap;
+  }
+  .preview img, .preview video { width: 100%; border-radius: var(--mv-radius); border: 1px solid var(--mv-line); display: block; background: var(--mv-bg); }
+  .empty { color: var(--mv-dim); font-size: 12px; padding: 4px 0; margin: 0; }
+  .pill { font: 11px var(--mv-mono); color: var(--mv-dim); border: 1px solid var(--mv-line); border-radius: 999px; padding: 2px 8px; text-decoration: none; }
+  a.pill:hover { background: var(--mv-hover); }
+  .err { color: var(--mv-bad); font-size: 12px; }
+  .muted { color: var(--mv-dim); font: 11px var(--mv-mono); }
+</style>
+</head>
+<body>
+<header>
+  <h1>MV 工坊</h1>
+  <span class="dot" id="envDot"></span>
+  <span class="muted" id="envText">未自检</span>
+  <span class="spacer"></span>
+  <button id="btnProbe">自检</button>
+  <button id="btnRefresh">刷新</button>
+</header>
+<main>
+  <div class="list" id="list"></div>
+  <div class="detail" id="detail"><p class="empty">正在载入工程列表…</p></div>
+</main>
+<script>
+(function () {
+  var API = '/music-mv/api';
+  var NL = String.fromCharCode(10);
+  var state = { projects: [], selected: null, job: null, env: null, root: '', texts: {}, err: '' };
+  var timer = null;
+
+  function el(tag, attrs, kids) {
+    var node = document.createElement(tag);
+    if (attrs) for (var k in attrs) {
+      if (k === 'text') node.textContent = attrs[k];
+      else if (k === 'class') node.className = attrs[k];
+      else node.setAttribute(k, attrs[k]);
+    }
+    if (kids) kids.forEach(function (c) { if (c) node.appendChild(c); });
+    return node;
+  }
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+      return c === '&' ? '&amp;' : c === '<' ? '&lt;' : c === '>' ? '&gt;' : '&quot;';
+    });
+  }
+  function human(bytes) {
+    if (!bytes && bytes !== 0) return '—';
+    var u = ['B', 'KB', 'MB', 'GB'], n = bytes, i = 0;
+    while (n >= 1024 && i < u.length - 1) { n = n / 1024; i++; }
+    return (i === 0 ? n : n.toFixed(1)) + ' ' + u[i];
+  }
+  function when(ms) { return ms ? new Date(ms).toLocaleString('zh-CN') : '—'; }
+  function fileUrl(rel, bust) { return API + '/file?path=' + encodeURIComponent(rel) + (bust ? '&t=' + bust : ''); }
+  function textUrl(rel) { return API + '/text?path=' + encodeURIComponent(rel); }
+
+  // ---- 主题：父窗口（DSH）通过 postMessage 推过来的设计令牌 ----
+  window.addEventListener('message', function (ev) {
+    var d = ev.data;
+    if (!d || d.source !== 'dsh-music-code-mv' || d.type !== 'theme') return;
+    var root = document.documentElement;
+    root.setAttribute('data-theme', d.dark ? 'dark' : 'light');
+    var tokens = d.tokens || {};
+    for (var k in tokens) { try { root.style.setProperty(k, tokens[k]); } catch (e) { /* ignore */ } }
+  });
+
+  function project() {
+    for (var i = 0; i < state.projects.length; i++) if (state.projects[i].path === state.selected) return state.projects[i];
+    return null;
+  }
+
+  function renderList() {
+    var list = document.getElementById('list');
+    list.textContent = '';
+    if (!state.projects.length) {
+      list.appendChild(el('p', { class: 'empty', text: '没有扫描到工程。先用 music_mv_init 建一个。' }));
+      return;
+    }
+    state.projects.forEach(function (p) {
+      var badges = [];
+      if (p.storyboard) badges.push('分镜');
+      if (p.lyrics) badges.push('歌词');
+      if (p.contact) badges.push('联系表');
+      if (p.video) badges.push('成片');
+      var b = el('button', { class: 'item', type: 'button' });
+      b.setAttribute('aria-current', String(p.path === state.selected));
+      b.appendChild(el('b', { text: p.name }));
+      b.appendChild(el('small', { text: (p.width || '?') + '×' + (p.height || '?') + ' @' + (p.fps || '?') + 'fps · ' + badges.join('/') }));
+      b.onclick = function () { state.selected = p.path; render(); };
+      list.appendChild(b);
+    });
+  }
+
+  function textButton(label, rel) {
+    var b = el('button', { text: label });
+    b.onclick = function () {
+      fetch(textUrl(rel)).then(function (r) { return r.text(); }).then(function (t) {
+        state.texts = { open: true, label: label, rel: rel, body: t };
+        render();
+      }).catch(function (e) { state.err = String(e); render(); });
+    };
+    return b;
+  }
+
+  function numField(label, id, value, min) {
+    var wrap = el('label', { class: 'field' });
+    wrap.appendChild(el('span', { text: label }));
+    var input = el('input', { type: 'number', id: id, value: value });
+    if (min != null) input.min = String(min);
+    wrap.appendChild(input);
+    return wrap;
+  }
+
+  function renderControls(p) {
+    var card = el('div', { class: 'card' });
+    card.appendChild(el('h2', { text: '渲染' }));
+    var row = el('div', { class: 'row' });
+    var sel = el('select', { id: 'mode' });
+    [['contact', '联系表'], ['stills', '静帧'], ['video', '完整视频'], ['sheet', '用缓存重建联系表']].forEach(function (o) {
+      sel.appendChild(el('option', { value: o[0], text: o[1] }));
+    });
+    row.appendChild(sel);
+    row.appendChild(numField('宽', 'w', p.width || 1280, 16));
+    row.appendChild(numField('高', 'h', p.height || 720, 16));
+    row.appendChild(numField('时长 s', 'dur', p.duration || 10, 0));
+    row.appendChild(numField('关键帧', 'keys', 12, 1));
+    row.appendChild(numField('并行', 'workers', 1, 1));
+    var ts = el('label', { class: 'field' });
+    ts.appendChild(el('span', { text: '静帧时间戳' }));
+    ts.appendChild(el('input', { type: 'text', id: 'stills', value: '0,2,4' }));
+    row.appendChild(ts);
+    card.appendChild(row);
+
+    var row2 = el('div', { class: 'row' });
+    var start = el('button', { class: 'primary', text: '开始渲染' });
+    var cancel = el('button', { class: 'danger', text: '取消' });
+    var running = state.job && state.job.status === 'running';
+    start.disabled = running;
+    cancel.disabled = !running;
+    start.onclick = function () {
+      var body = {
+        project: p.path,
+        mode: document.getElementById('mode').value,
+        width: Number(document.getElementById('w').value) || undefined,
+        height: Number(document.getElementById('h').value) || undefined,
+        duration: Number(document.getElementById('dur').value) || undefined,
+        keys: Number(document.getElementById('keys').value) || undefined,
+        workers: Number(document.getElementById('workers').value) || undefined,
+        stills: document.getElementById('stills').value || undefined
+      };
+      start.disabled = true;
+      state.err = '';
+      fetch(API + '/render', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+        .then(function (r) { return r.json(); })
+        .then(function (j) { if (j && j.ok === false) state.err = j.error; state.job = j.job || state.job; poll(); })
+        .catch(function (e) { state.err = String(e); render(); });
+    };
+    cancel.onclick = function () { fetch(API + '/cancel', { method: 'POST' }).then(function () { poll(); }); };
+    row2.appendChild(start);
+    row2.appendChild(cancel);
+    row2.appendChild(el('span', { class: 'pill', text: '草稿先用 480×270' }));
+    card.appendChild(row2);
+    return card;
+  }
+
+  function renderJob() {
+    var card = el('div', { class: 'card' });
+    card.appendChild(el('h2', { text: '任务' }));
+    var job = state.job;
+    if (!job) { card.appendChild(el('p', { class: 'empty', text: '还没有渲染任务。' })); return card; }
+    var pct = job.progress && job.progress.pct != null ? job.progress.pct : (job.status === 'done' ? 100 : 0);
+    var bar = el('div', { class: 'bar' });
+    var fill = el('i');
+    fill.style.width = Math.max(0, Math.min(100, pct)) + '%';
+    bar.appendChild(fill);
+    card.appendChild(bar);
+    var statusText = { running: '进行中', done: '完成', error: '失败', cancelled: '已取消' }[job.status] || job.status;
+    var meta = el('div', { class: 'meta' });
+    meta.style.marginTop = '8px';
+    meta.appendChild(el('span', { html: '状态 <b>' + esc(statusText) + '</b>' }));
+    meta.appendChild(el('span', { html: '模式 <b>' + esc(job.mode) + '</b>' }));
+    meta.appendChild(el('span', { html: '进度 <b>' + esc(Math.round(pct)) + '%</b>' }));
+    if (job.progress && job.progress.total) meta.appendChild(el('span', { html: '帧 <b>' + job.progress.done + '/' + job.progress.total + '</b>' }));
+    meta.appendChild(el('span', { html: '退出码 <b>' + esc(job.exitCode == null ? '—' : job.exitCode) + '</b>' }));
+    card.appendChild(meta);
+    card.appendChild(el('pre', { text: (job.log || []).slice(-40).join(NL) }));
+    return card;
+  }
+
+  function renderPreview(p) {
+    var card = el('div', { class: 'card preview' });
+    card.appendChild(el('h2', { text: '预览' }));
+    if (!p.contact && !p.video) { card.appendChild(el('p', { class: 'empty', text: '还没有产物，先渲染一张联系表。' })); return card; }
+    if (p.contact) {
+      card.appendChild(el('p', { class: 'meta', html: '<b>联系表</b> ' + esc(when(p.contact.mtime)) + ' · ' + esc(human(p.contact.bytes)) }));
+      card.appendChild(el('img', { alt: '联系表', src: fileUrl(p.contact.path, p.contact.mtime) }));
+    }
+    if (p.video) {
+      card.appendChild(el('p', { class: 'meta', html: '<b>成片</b> ' + esc(p.video.path) + ' · ' + esc(human(p.video.bytes)) }));
+      card.appendChild(el('video', { controls: 'controls', preload: 'metadata', src: fileUrl(p.video.path, p.video.mtime) }));
+    }
+    return card;
+  }
+
+  function renderText() {
+    var card = el('div', { class: 'card' });
+    var close = el('button', { text: '收起' });
+    close.style.float = 'right';
+    close.onclick = function () { state.texts = {}; render(); };
+    card.appendChild(close);
+    card.appendChild(el('h2', { text: state.texts.label + ' · ' + state.texts.rel }));
+    card.appendChild(el('pre', { text: state.texts.body }));
+    return card;
+  }
+
+  function renderDetail() {
+    var d = document.getElementById('detail');
+    d.textContent = '';
+    var p = project();
+    if (!p) { d.appendChild(el('p', { class: 'empty', text: '选择左侧的一个工程。' })); }
+    else {
+      var head = el('div', { class: 'card' });
+      head.appendChild(el('h2', { text: '工程 · ' + p.path }));
+      var meta = el('div', { class: 'meta' });
+      [['分辨率', (p.width || '?') + '×' + (p.height || '?')], ['帧率', (p.fps || '?') + ' fps'],
+       ['时长', (p.duration || '?') + ' s'], ['场景', p.scenes + ' 个'], ['缓存帧', p.frames + ' 帧'],
+       ['分镜', p.storyboard ? '有' : '无'], ['歌词', p.lyrics ? '有' : '无']].forEach(function (kv) {
+        meta.appendChild(el('span', { html: esc(kv[0]) + ' <b>' + esc(kv[1]) + '</b>' }));
+      });
+      head.appendChild(meta);
+      var tools = el('div', { class: 'row' });
+      tools.style.marginTop = '10px';
+      if (p.storyboard) tools.appendChild(textButton('分镜', p.path + '/storyboard.md'));
+      if (p.lyricsPath) tools.appendChild(textButton('歌词', p.lyricsPath));
+      if (p.video) tools.appendChild(el('a', { class: 'pill', href: fileUrl(p.video.path, p.video.mtime) + '&download=1', text: '下载成片' }));
+      head.appendChild(tools);
+      d.appendChild(head);
+      d.appendChild(renderControls(p));
+      d.appendChild(renderJob());
+      d.appendChild(renderPreview(p));
+      if (state.texts.open) d.appendChild(renderText());
+    }
+    if (state.err) d.appendChild(el('p', { class: 'err', text: state.err }));
+  }
+
+  function render() {
+    document.title = 'MV 工坊';
+    var dot = document.getElementById('envDot');
+    var txt = document.getElementById('envText');
+    if (state.env) {
+      dot.className = 'dot ' + (state.env.ready ? 'ok' : 'bad');
+      txt.textContent = state.env.ready ? '环境就绪' : '环境缺件';
+      txt.title = state.env.text || '';
+    }
+    renderList();
+    renderDetail();
+  }
+
+  function poll() {
+    fetch(API + '/job').then(function (r) { return r.json(); }).then(function (s) {
+      state.job = s.job;
+      render();
+      var running = state.job && state.job.status === 'running';
+      if (timer) { clearTimeout(timer); timer = null; }
+      if (running) timer = setTimeout(poll, 1200);
+      else refresh(false);
+    }).catch(function () {});
+  }
+
+  function refresh(withRender) {
+    return fetch(API + '/state').then(function (r) { return r.json(); }).then(function (s) {
+      state.projects = s.projects || [];
+      state.job = s.job || null;
+      state.env = s.env || null;
+      state.root = s.root || '';
+      if (!state.selected && state.projects.length) {
+        var best = null, bestAt = -1;
+        state.projects.forEach(function (p) {
+          var at = Math.max(p.contact ? p.contact.mtime : 0, p.video ? p.video.mtime : 0);
+          if (at > bestAt) { bestAt = at; best = p; }
+        });
+        state.selected = (best || state.projects[0]).path;
+      }
+      if (withRender !== false) render();
+      if (s.job && s.job.status === 'running' && !timer) timer = setTimeout(poll, 1000);
+      return s;
+    }).catch(function (e) { state.err = '无法连接宿主：' + e; render(); });
+  }
+
+  document.getElementById('btnRefresh').onclick = function () { refresh(true); };
+  document.getElementById('btnProbe').onclick = function () {
+    var dot = document.getElementById('envDot');
+    var txt = document.getElementById('envText');
+    dot.className = 'dot run';
+    txt.textContent = '自检中…';
+    fetch(API + '/probe', { method: 'POST' }).then(function (r) { return r.json(); }).then(function (s) {
+      state.env = s.env;
+      render();
+    }).catch(function (e) { state.err = String(e); render(); });
+  };
+  refresh(true);
+})();
+</script>
+</body>
+</html>

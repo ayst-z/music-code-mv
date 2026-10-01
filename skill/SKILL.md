@@ -33,7 +33,7 @@ The agent acts as **director + renderer**: storyboard first, build shot by shot,
 
 ```
 1. brief      → storyboard.md (shots + seconds + lyric cues + palette)
-2. scaffold   → node skills/music-code-mv/scripts/init.mjs <project-dir>
+2. scaffold   → node skills/music-code-mv/scripts/init.mjs <project-dir> [--preset=<id>]
 3. build      → one scene module per shot in src/scenes/
 4. check      → node scripts/render.mjs --project=<dir> --contact
                  then read the sheet PNG and judge it
@@ -52,13 +52,18 @@ Seven steps: brief → storyboard; scaffold; build one scene module per shot; ch
 
 ### 2. 脚手架 (Scaffold)
 
-一条命令生成项目：
+一条命令生成项目；带上 `--preset` 还能一次拿到配色、后期、时长、分镜与占位歌词，生成即可渲染：
 
-Run this once to scaffold a project:
+Run this once to scaffold a project; add `--preset` to also get palette, post-processing, duration, storyboard and placeholder lyrics in the same step:
 
 ```bash
-node skills/music-code-mv/scripts/init.mjs my-mv
+node skills/music-code-mv/scripts/init.mjs my-mv                      # 模板默认配色 / template defaults
+node skills/music-code-mv/scripts/init.mjs my-mv --preset=neon-rain  # 套用预设 / apply a preset
+node skills/music-code-mv/scripts/init.mjs --list-presets            # 列出预设 / list presets
 ```
+
+四个预设 / four presets: `neon-rain`（霓虹雨夜）、`ink-paper`（纸墨，浅色）、`phosphor`（磷光终端）、`dusk-lofi`（落日低保真）。
+细节与「怎么用才不浪费」见 `reference/presets.md`。Preset details live in `reference/presets.md`.
 
 生成的项目自带 Canvas2D 舞台、时间轴、带种子的 PRNG、歌词解析、风格辅助函数和一个可跑的演示场景。只有当某个镜头真的需要 3D 时才引入 Three.js（见 `reference/threejs.md`）。
 
@@ -154,6 +159,7 @@ Requires Node.js, Google Chrome (or Edge) and ffmpeg. In this workspace they are
 
 ## 参考文档 (Reference)
 
+- `reference/presets.md` —— 四个开箱即用的预设：配色、后期、时长、分镜、占位歌词
 - `reference/styles.md` —— 代码 MV 观感的风格词汇与配方
 - `reference/techniques.md` —— 确定性渲染、Chrome flag、截帧、编码
 - `reference/threejs.md` —— 怎么加 Three.js 镜头

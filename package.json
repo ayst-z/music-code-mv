@@ -1,25 +1,37 @@
 {
   "name": "dsh-music-code-mv",
-  "version": "0.1.0",
-  "description": "DSH plugin: render code-driven music videos (music-code-mv). Deterministic Canvas2D/Three.js shots captured in headless Chrome and encoded with ffmpeg.",
+  "version": "0.2.0",
+  "description": "DSH 插件：把一支 MV 写成代码（music-code-mv）。确定性的 Canvas2D / Three.js 镜头在无头 Chrome 里逐帧渲染，再用 ffmpeg 编码；并带一个中文图形界面「MV 工坊」。 / DSH plugin: render code-driven music videos, with a Chinese MV Studio GUI.",
   "type": "module",
   "main": "index.js",
   "exports": {
     ".": "./index.js",
+    "./client": "./lib/client.js",
+    "./locale/zh.json": "./locale/zh.json",
+    "./locale/en.json": "./locale/en.json",
     "./package.json": "./package.json"
   },
   "files": [
     "index.js",
     "lib",
+    "locale",
     "cordis.patch.yml",
     "skill",
     "README.md"
   ],
-  "keywords": ["dsh-plugin", "deepseek-harness", "music-code-mv", "music-video", "canvas", "three.js", "ffmpeg", "animation"],
+  "keywords": ["dsh-plugin", "deepseek-harness", "music-code-mv", "music-video", "canvas", "three.js", "ffmpeg", "animation", "gui"],
   "license": "MIT",
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-renderer",
+        "@deepseek-ai/dsh-client-ui-sidebar-right"
+      ]
     }
   },
   "peerDependencies": {

@@ -65,7 +65,7 @@ const ctx = { tools: { register: (t) => registered.push(t) } };
 mod.apply(ctx, config);
 
 const names = registered.map(t => t.name).sort();
-ok('registers 6 tools', registered.length === 6, names.join(', '));
+ok('registers 7 tools（含图形界面入口）', registered.length === 7, names.join(', '));
 
 const byName = Object.fromEntries(registered.map(t => [t.name, t]));
 for (const n of ['music_mv_guide', 'music_mv_probe', 'music_mv_init', 'music_mv_render']) {
@@ -77,7 +77,7 @@ for (const n of ['music_mv_guide', 'music_mv_probe', 'music_mv_init', 'music_mv_
     t ? 'params: ' + Object.keys(t.parameters).join(',') : 'MISSING');
 }
 
-for (const n of ['music_mv_lyrics', 'music_mv_diff']) {
+for (const n of ['music_mv_lyrics', 'music_mv_diff', 'music_mv_studio']) {
   const t = byName[n];
   ok('tool contract: ' + n,
     !!t && typeof t.description === 'string' && t.description.length > 20 &&
@@ -115,6 +115,48 @@ const bad = await byName.music_mv_render.execute({ projectDir: path.join(WORK, '
 ok('render refuses a project with no index.html', typeof bad === 'string' && bad.includes('No index.html'));
 const badTopic = await byName.music_mv_guide.execute({ topic: 'nonsense' });
 ok('guide rejects an unknown topic', typeof badTopic === 'string' && badTopic.includes('Unknown topic'));
+
+// ---- 中文优先 / zh-first ----
+console.log('\n--- 中文（zh-first）---');
+const cjk = new RegExp('[\\u4e00-\\u9fff]');
+ok('工具描述是中文优先', registered.every(t => cjk.test(t.description)),
+  registered.filter(t => !cjk.test(t.description)).map(t => t.name).join(',') || 'all zh-first');
+ok('渲染错误提示中英并列', bad.includes('没有 index.html') && bad.includes('No index.html'), bad.slice(0, 80));
+
+// ---- 图形界面：挂到模拟 webServer 上 / studio wiring ----
+console.log('\n--- 图形界面 / studio ---');
+const routes = [];
+let studioTool = null;
+const fakeWeb = { port: 45678, register(route) { routes.push(route); return () => { routes.length = 0; }; } };
+const ctx2 = {
+  tools: { register: (t) => { if (t.name === 'music_mv_studio') studioTool = t; } },
+  inject(deps, cb) {
+    ok('图形界面只依赖 webServer', Array.isArray(deps) && deps.length === 1 && deps[0] === 'webServer', JSON.stringify(deps));
+    cb({ webServer: fakeWeb, effect: (fn) => { const d = fn(); return typeof d === 'function' ? d : () => {}; } });
+  }
+};
+mod.apply(ctx2, { ...config, studioRoot: PLUGIN });
+ok('注册了 /music-mv 前缀路由', routes.length === 1 && routes[0].kind === 'prefix' && routes[0].path === '/music-mv',
+  routes.map(r => r.kind + ' ' + r.path).join(',') || 'none');
+ok('studio 工具已注册', !!studioTool);
+const studioInfo = await studioTool.execute({});
+ok('studio 工具返回中文摘要与地址',
+  studioInfo.includes('MV 工坊') && studioInfo.includes('/music-mv/studio') && studioInfo.includes('工程 projects'),
+  studioInfo.split('\n').slice(0, 3).join(' | '));
+const studioUrl = await studioTool.execute({ action: 'url' });
+ok('studio action=url 只回地址', /^http:\/\/127\.0\.0\.1:\d+\/music-mv\/studio$/.test(studioUrl), studioUrl);
+
+const fakeRes = {
+  code: 0, headers: null, body: null,
+  writeHead(code, headers) { this.code = code; this.headers = headers; },
+  end(body) { this.body = Buffer.isBuffer(body) ? body.toString('utf8') : String(body); }
+};
+await routes[0].handler({ url: '/music-mv/api/state', method: 'GET', headers: {} }, fakeRes);
+ok('工作室状态接口返回 200 JSON', fakeRes.code === 200 && /application\/json/.test(fakeRes.headers['content-type']),
+  fakeRes.code + ' ' + fakeRes.headers['content-type']);
+const stateJson = JSON.parse(fakeRes.body);
+ok('状态接口列出工程', Array.isArray(stateJson.projects) && stateJson.projects.length >= 1,
+  (stateJson.projects || []).length + ' projects');
 
 // ---- music_mv_lyrics: scaffold a second project, inject a real LRC ----
 console.log('\n--- music_mv_init (tool-check) ---');

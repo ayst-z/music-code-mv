@@ -5,7 +5,11 @@
  * JavaScript means "dsh plugin add" works with no prepare script and no build
  * permission prompt. Types live in JSDoc.
  *
- * Registers six tools on ctx.tools:
+ * 还注册一块图形界面：当 profile 里有 webServer 时，在 /music-mv/studio 上挂一个中文
+ * 工作室（内嵌在 DSH 右侧边栏「MV 工坊」里，也可以直接用浏览器打开）。宿主半边见
+ * lib/studio.js，浏览器半边见 lib/client.js。
+ *
+ * Registers seven tools on ctx.tools:
  *   music_mv_guide   read the music-code-mv skill / reference docs
  *   music_mv_probe   check the local toolchain (node / chrome / ffmpeg / puppeteer)
  *   music_mv_init    scaffold a new MV project from the bundled template
@@ -22,6 +26,7 @@ import crypto from 'node:crypto';
 import { defineTool } from '@deepseek-ai/dsh-tools';
 import Schema from '@deepseek-ai/schemastery';
 import { SKILL_DIR, PLUGIN_ROOT, runScript, formatResult } from './lib/runner.js';
+import { createStudio, STUDIO_PAGE } from './lib/studio.js';
 import { runFfmpeg } from './skill/scripts/lib/encode.mjs';
 
 export const name = 'music-code-mv';
@@ -34,6 +39,7 @@ export const inject = ['tools'];
  * @property {'png'|'jpeg'} frameFormat  intermediate frame format; jpeg is ~3x faster at 4K
  * @property {string} [chromePath]  override the Chrome/Edge executable
  * @property {string} [ffmpegPath]  override the ffmpeg executable
+ * @property {string} [studioRoot]  图形界面扫描工程的工作区根目录（默认 process.cwd()）
  */
 
 /** @type {import('@deepseek-ai/schemastery').default<Config>} */
@@ -42,11 +48,13 @@ export const Config = Schema.object({
   softwareGl: Schema.boolean().default(true),
   frameFormat: Schema.union(['png', 'jpeg']).default('jpeg'),
   chromePath: Schema.string(),
-  ffmpegPath: Schema.string()
+  ffmpegPath: Schema.string(),
+  studioRoot: Schema.string()
 });
 
 const READABLE = {
   skill: path.join(SKILL_DIR, 'SKILL.md'),
+  presets: path.join(SKILL_DIR, 'reference', 'presets.md'),
   styles: path.join(SKILL_DIR, 'reference', 'styles.md'),
   techniques: path.join(SKILL_DIR, 'reference', 'techniques.md'),
   threejs: path.join(SKILL_DIR, 'reference', 'threejs.md'),
@@ -118,6 +126,22 @@ const textBlock = (text) => [{ type: 'text', text }];
 export function apply(ctx, config) {
   const cfg = config || {};
 
+  /**
+   * 图形界面的宿主半边。有 webServer 的 profile（Web / 桌面版）里会挂到
+   * /music-mv/studio；纯 base profile 里保持为 null，工具照常工作。
+   */
+  const studio = { current: null };
+  if (typeof ctx.inject === 'function') {
+    ctx.inject(['webServer'], (webCtx) => {
+      const instance = createStudio({ root: cfg.studioRoot || process.cwd() });
+      const dispose = instance.register(webCtx.webServer);
+      studio.current = instance;
+      if (typeof webCtx.effect === 'function') {
+        webCtx.effect(() => () => { studio.current = null; dispose(); }, 'music-code-mv: 工作室路由');
+      }
+    });
+  }
+
   const commonFlags = () => {
     const f = [];
     if (cfg.chromePath) f.push('--chrome=' + cfg.chromePath);
@@ -151,15 +175,16 @@ export function apply(ctx, config) {
 
   ctx.tools.register(textTool(
     'music_mv_guide',
-    'Read the music-code-mv authoring guide. Call this before directing or rendering a code-driven ' +
-    'music video. Topics: skill (workflow + rules, read first), styles (T1-T12 look library), ' +
-    'techniques (deterministic rendering, headless capture, encoding), threejs (3D shots), ' +
-    'environment (toolchain install and fallbacks), lineage (where this form comes from).',
-    { topic: { type: 'string', description: 'skill | styles | techniques | threejs | environment | lineage. Defaults to skill.' } },
+    '读取 music-code-mv 创作指南。指导或渲染纯代码 MV 之前先调它。主题：skill（流程与铁律，先读）、' +
+    'presets（四个开箱即用的预设：配色+后期+时长+分镜+占位歌词）、styles（T1-T12 风格库）、' +
+    'techniques（确定性渲染、无头截帧、编码）、threejs（3D 镜头）、' +
+    'environment（工具链安装与降级）、lineage（这种形式的来龙去脉）。' +
+    ' / Read the music-code-mv authoring guide before directing a code-driven music video.',
+    { topic: { type: 'string', description: '主题 topic: skill | presets | styles | techniques | threejs | environment | lineage（默认 skill）。' } },
     async (args) => {
       const topic = String((args && args.topic) || 'skill').toLowerCase();
       const file = READABLE[topic];
-      if (!file) return 'Unknown topic "' + topic + '". Available: ' + Object.keys(READABLE).join(', ');
+      if (!file) return '未知主题 / Unknown topic "' + topic + '"。可用：' + Object.keys(READABLE).join(', ');
       try { return fs.readFileSync(file, 'utf8'); }
       catch (e) { return 'Could not read ' + file + ': ' + (e && e.message ? e.message : e); }
     }
@@ -167,41 +192,44 @@ export function apply(ctx, config) {
 
   ctx.tools.register(textTool(
     'music_mv_probe',
-    'Check whether this machine can render music-code-mv videos: Node, headless Chrome/Edge, ffmpeg, ' +
-    'puppeteer-core, three.js and a live WebGL context. Run this first; it prints a READY verdict ' +
-    'or names exactly what is missing.',
+    '环境自检：Node、无头 Chrome/Edge、ffmpeg、puppeteer-core、three.js 与真实 WebGL 上下文。' +
+    '渲染之前先跑它：打印 READY，或明确指出缺什么。' +
+    ' / Check whether this machine can render music-code-mv videos.',
     { projectDir: { type: 'string', description: 'Project directory to probe for a local node_modules. Defaults to the working directory.' } },
     async (args) => {
       const dir = args && args.projectDir ? path.resolve(String(args.projectDir)) : process.cwd();
       const r = await runScript('probe.mjs', [dir]);
-      return formatResult('music-code-mv environment probe', r, { note: 'READY means everything needed for a render is present.' });
+      return formatResult('music-code-mv 环境自检 / environment probe', r, { note: 'READY 表示渲染所需的一切都在。 / READY means everything needed for a render is present.' });
     }
   ));
 
   ctx.tools.register(textTool(
     'music_mv_init',
-    'Scaffold a new music-code-mv project (timeline, seeded PRNG, Canvas2D stage with the code-MV look, ' +
-    'lyric parsing, and a working 21s six-shot demo). Writes project.json, index.html, ' +
-    'storyboard.md, lyrics.lrc and src/.',
+    '生成一支 MV 的工程骨架：时间线、种子化 PRNG、内置代码 MV 质感的 Canvas2D 舞台、歌词解析，' +
+    '以及一个可以直接跑的 21 秒六镜头 demo。写入 project.json、index.html、storyboard.md、' +
+    'lyrics.lrc 与 src/。给 preset 时直接套用预设：配色、后期、时长、分镜与占位歌词一次到位，生成即可渲染。' +
+    ' / Scaffold a new music-code-mv project from the bundled template.',
     {
-      dir: { type: 'string', required: true, description: 'Project directory to create.' },
-      force: { type: 'boolean', description: 'Overwrite a non-empty directory.' }
+      dir: { type: 'string', required: true, description: 'Project directory to create / 要创建的工程目录。' },
+      force: { type: 'boolean', description: 'Overwrite a non-empty directory / 覆盖非空目录。' },
+      preset: { type: 'string', description: '预设 preset: neon-rain | ink-paper | phosphor | dusk-lofi（见 music_mv_guide topic=presets）。省缺则用模板默认配色。' }
     },
     async (args) => {
       const dir = String(args.dir);
       const argv = [dir];
       if (args.force) argv.push('--force');
+      if (args.preset) argv.push('--preset=' + String(args.preset));
       const r = await runScript('init.mjs', argv, { cwd: process.cwd() });
-      return formatResult('scaffold ' + dir, r, { note: 'Next: edit storyboard.md, then music_mv_render mode=contact.' });
+      return formatResult('生成工程 / scaffold ' + dir, r, { note: '下一步：先改 storyboard.md，再跑 music_mv_render mode=contact。 / Next: edit storyboard.md, then render a contact sheet.' });
     }
   ));
 
   ctx.tools.register(textTool(
     'music_mv_render',
-    'Render a music-code-mv project. mode=contact renders evenly spaced keyframes tiled into one PNG ' +
-    '(the self-check step — read the image and critique it); mode=stills renders specific ' +
-    'timestamps; mode=video renders every frame and encodes an MP4 with ffmpeg. Frames are cached, ' +
-    'so a re-run resumes instead of starting over.',
+    '渲染一支 MV 工程。mode=contact 把等距关键帧拼成一张 PNG 联系表（自检环节——务必用读图工具看它）；' +
+    'mode=stills 导出指定时间戳；mode=video 渲染全部帧并用 ffmpeg 编码成 MP4。帧带缓存，' +
+    '重跑是续渲而不是从头开始。' +
+    ' / Render a music-code-mv project: contact sheet, stills, or a full MP4.',
     {
       projectDir: { type: 'string', required: true, description: 'Project directory containing index.html.' },
       mode: { type: 'string', description: 'contact | stills | video | sheet. Defaults to contact.' },
@@ -226,22 +254,22 @@ export function apply(ctx, config) {
     async (args) => {
       const projectDir = path.resolve(String(args.projectDir));
       if (!fs.existsSync(path.join(projectDir, 'index.html'))) {
-        return 'No index.html in ' + projectDir + '. Scaffold one with music_mv_init first.';
+        return '目录里没有 index.html / No index.html in ' + projectDir + '。先用 music_mv_init 生成一个工程。';
       }
       const mode = String(args.mode || 'contact');
       if (!['contact', 'stills', 'video', 'sheet'].includes(mode)) {
         // an unknown/typo'd mode used to fall through to the default full render —
         // the most expensive possible answer to a typo
-        return 'Unknown mode "' + mode + '". Use contact | stills | video | sheet.';
+        return '未知模式 / Unknown mode "' + mode + '"：请用 contact | stills | video | sheet。';
       }
       if (args.engine !== undefined && !['chrome', 'node'].includes(String(args.engine))) {
-        return 'Unknown engine "' + args.engine + '". Use chrome | node.';
+        return '未知引擎 / Unknown engine "' + args.engine + '"：请用 chrome | node。';
       }
       if (args.format !== undefined && !['jpeg', 'jpg', 'png'].includes(String(args.format).toLowerCase())) {
-        return 'Unknown format "' + args.format + '". Use jpeg | png.';
+        return '未知帧格式 / Unknown format "' + args.format + '"：请用 jpeg | png。';
       }
       if (args.orientation !== undefined && !['landscape', 'portrait'].includes(String(args.orientation).toLowerCase())) {
-        return 'Unknown orientation "' + args.orientation + '". Use landscape | portrait.';
+        return '未知方向 / Unknown orientation "' + args.orientation + '"：请用 landscape | portrait。';
       }
       const argv = ['--project=' + projectDir];
       if (mode === 'contact') argv.push('--contact');
@@ -270,20 +298,20 @@ export function apply(ctx, config) {
 
       const r = await runScript('render.mjs', argv, { cwd: projectDir });
       const note = mode === 'contact'
-        ? 'Open the contact sheet PNG and actually look at it before proceeding.'
+        ? '把联系表 PNG 打开，真的看一眼再往下走。 / Open the contact sheet PNG and actually look at it.'
         : mode === 'video'
-          ? 'MP4 written. Verify duration and streams before delivering.'
+          ? 'MP4 已写出。交付前核对时长与流。 / MP4 written — verify duration and streams before delivering.'
           : undefined;
-      return formatResult('music-code-mv render (' + mode + ')', r, { note });
+      return formatResult('music-code-mv 渲染 / render (' + mode + ')', r, { note });
     }
   ));
 
   ctx.tools.register(defineTool({
     name: 'music_mv_lyrics',
-    description: 'Inject lyrics into a music-code-mv project: writes <projectDir>/lyrics.lrc, points ' +
-      'project.json at it, and reports how many [mm:ss.xx] cues were parsed plus the first and ' +
-      'last cue time. Malformed LRC throws an error naming the offending line; a file with zero ' +
-      'time cues is refused. Nothing is written when validation fails.',
+    description: '把歌词写进工程：生成 <projectDir>/lyrics.lrc、让 project.json 指向它，并报告解析出的 ' +
+      '[mm:ss.xx] 条数以及首尾时间。LRC 有错会报出具体行号；一条时间标签都没有则拒绝写入。' +
+      '校验不通过时不会动磁盘。' +
+      ' / Inject lyrics into a music-code-mv project and report its cues.',
     parameters: {
       projectDir: { type: 'string', required: true, description: 'Project directory containing project.json.' },
       lrc: { type: 'string', required: true, description: 'Full LRC text to inject, one cue per line: [mm:ss.xx] lyric.' },
@@ -301,10 +329,10 @@ export function apply(ctx, config) {
         }
       },
       render: (_args, v) => textBlock([
-        '## music-code-mv lyrics injected',
-        'file: ' + v.path,
-        'cues: ' + v.cues,
-        'span: ' + v.firstCue + 's → ' + v.lastCue + 's',
+        '## music-code-mv 歌词已写入 / lyrics injected',
+        '文件 file: ' + v.path,
+        '条数 cues: ' + v.cues,
+        '跨度 span: ' + v.firstCue + 's → ' + v.lastCue + 's',
         'project.json "lyrics" now points at lyrics.lrc'
       ].join('\n'))
     },
@@ -356,10 +384,10 @@ export function apply(ctx, config) {
 
   ctx.tools.register(defineTool({
     name: 'music_mv_diff',
-    description: 'Compare two rendered frames of a music-code-mv project (frames/f00000.jpg, …). ' +
-      'Byte-identical frames short-circuit on sha1 and report identical=true with psnr=null; ' +
-      'otherwise ffmpeg -lavfi psnr runs and the average dB is returned. A frame that does not ' +
-      'exist fails with the exact missing file name.',
+    description: '比较一支 MV 工程的两帧（frames/f00000.jpg …）。字节相同直接按 sha1 短路，' +
+      '返回 identical=true 且 psnr=null；否则跑 ffmpeg -lavfi psnr 返回平均 dB。' +
+      '帧不存在时报出确切的缺失文件名。' +
+      ' / Compare two rendered frames of a music-code-mv project.',
     parameters: {
       projectDir: { type: 'string', required: true, description: 'Project directory containing frames/.' },
       a: { type: 'number', required: true, description: 'First frame number (0 = frames/f00000.jpg).' },
@@ -378,12 +406,12 @@ export function apply(ctx, config) {
         }
       },
       render: (_args, v) => textBlock([
-        '## music-code-mv frame diff',
+        '## music-code-mv 帧对比 / frame diff',
         'a: ' + v.frameA,
         'b: ' + v.frameB,
-        'identical: ' + v.identical,
+        '是否一致 identical: ' + v.identical,
         'psnr: ' + (v.psnr === null ? 'null' : v.psnr + ' dB'),
-        'note: ' + v.note
+        '说明 note: ' + v.note
       ].join('\n'))
     },
     execute: async (args) => {
@@ -433,4 +461,42 @@ export function apply(ctx, config) {
       };
     }
   }));
+
+  ctx.tools.register(textTool(
+    'music_mv_studio',
+    '「MV 工坊」图形界面：在 DSH 右侧边栏里浏览工程、看联系表与成片、直接触发渲染（也可以直接用浏览器打开）。' +
+    '返回工作室地址、挂载状态、工程数量与当前渲染任务。' +
+    ' / The MV Studio GUI: browse projects, review contact sheets and films, and start renders.',
+    { action: { type: 'string', description: 'status（默认，摘要）| url（只要地址）| job（只看当前任务）' } },
+    async (args) => {
+      const action = String((args && args.action) || 'status').toLowerCase();
+      const instance = studio.current;
+      const lines = [];
+      if (!instance) {
+        lines.push('## MV 工坊 / MV Studio');
+        lines.push('当前 profile 没有 webServer，图形界面未挂载 / no webServer in this profile: the studio surface is not mounted.');
+        lines.push('六个工具照常可用；要图形界面，请用带 Web 或桌面版的 profile 启动 DSH。');
+        lines.push('The six tools keep working; use a Web/Desktop profile to get the GUI.');
+        return lines.join('\n');
+      }
+      const snap = instance.snapshot();
+      const projects = instance.listProjects();
+      if (action === 'url') return snap.url || (STUDIO_PAGE + '（尚未绑定端口 / not bound yet）');
+      lines.push('## MV 工坊 / MV Studio');
+      lines.push('地址 url: ' + (snap.url || STUDIO_PAGE));
+      lines.push('工作区 workspace: ' + snap.root);
+      lines.push('工程 projects: ' + projects.length + (projects.length ? '（' + projects.slice(0, 6).map((p) => p.name).join(', ') + (projects.length > 6 ? ' …' : '') + '）' : ''));
+      if (action === 'job') {
+        lines.push(snap.job
+          ? '当前任务 job: ' + snap.job.mode + ' · ' + snap.job.project + ' · ' + snap.job.status + ' · ' + (snap.job.progress && snap.job.progress.pct != null ? snap.job.progress.pct + '%' : '—')
+          : '当前没有渲染任务 / no render job');
+        return lines.join('\n');
+      }
+      lines.push(snap.job
+        ? '当前任务 job: ' + snap.job.mode + ' · ' + snap.job.project + ' · ' + snap.job.status + ' · ' + (snap.job.progress && snap.job.progress.pct != null ? snap.job.progress.pct + '%' : '—')
+        : '当前没有渲染任务 / no render job');
+      lines.push('怎么打开 / how to open: DSH 右侧边栏的「+」→「MV 工坊」（首次会自动打开一次），或直接用浏览器访问上面的地址。');
+      return lines.join('\n');
+    }
+  ));
 }

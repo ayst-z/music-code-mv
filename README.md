@@ -12,6 +12,9 @@ dsh --profile demo
 
 > GitHub topic: [`dsh-plugin`](https://github.com/topics/dsh-plugin)
 
+**中文优先 / Chinese-first.** 工具卡片与返回文本以中文为主、英文并列；浏览器端另有一块中文图形界面「MV 工坊」，内嵌在 DSH 右侧边栏，也可以直接用浏览器打开。
+Tool cards and returned text lead with Chinese; the browser half ships a Chinese **MV Studio** page in the DSH right sidebar, also reachable directly in a browser.
+
 ---
 
 ## Why code / 为什么是代码
@@ -45,6 +48,14 @@ The core constraint that buys all of this: **`renderAt(t)` is a pure function**.
 - **Real-time progress bar** with throughput and ETA / **实时进度条**：吞吐与 ETA
 - **HDR10** output: 10-bit HEVC, Rec.2020, PQ — with a real SDR→PQ conversion (`zscale`), not just re-tagging / **HDR10** 输出：10-bit HEVC、Rec.2020、PQ——走真实的 SDR→PQ 变换（`zscale`），不是只打标签
 - **HDR10 ✓ / HDR Vivid ✗** — HDR10 is delivered: 10-bit HEVC, Rec.2020, PQ and static mastering metadata (QSV cannot embed mastering metadata, so the renderer warns and `--encoder=libx265` gives a compliant master). HDR Vivid (CUVA TU-068 dynamic metadata) is **not supported**: the stock ffmpeg build here ships no CUVA encoder — an external CUVA toolchain would be required — so no doc or video copy claims it. / **HDR10 ✓ / HDR Vivid ✗**——HDR10 已交付：10-bit HEVC、Rec.2020、PQ 与静态母版元数据（QSV 无法嵌入母版元数据，渲染时会告警，合规母版请用 `--encoder=libx265`）。HDR Vivid（CUVA TU-068 动态元数据）**不支持**：本机 stock ffmpeg 没有 CUVA 编码器，需外部 CUVA 工具链，因此任何文档与视频文案都不声称支持。
+
+**图形界面 / GUI** (0.2.0)
+- 右侧边栏「MV 工坊」页面：首次自动打开一次，之后从标签栏的 `+` 里选 / a right-sidebar **MV Studio** page, auto-opened once, re-openable from the tab strip's `+`
+- 工程浏览：自动扫描工作区里的 MV 工程（project.json + index.html），显示分辨率、帧率、时长、场景数、缓存帧数 / project discovery with resolution, fps, duration, scene and cached-frame counts
+- 预览：联系表 PNG 直接看，成片 MP4 带 Range 流式播放（拖动进度不用整段下载）/ contact sheets inline, films streamed with range requests
+- 渲染：联系表 / 静帧 / 视频三种模式，宽高、时长、关键帧、并行数都能改；进度条 + 实时日志 + 取消 / render from the panel with live progress, log and cancel
+- 文本：一键读 storyboard.md 与 lyrics.lrc / one click to read the storyboard and lyrics
+- 全部中文，纯手写浏览器包（无构建步骤）；`file://` 环境下自动退化为「在浏览器打开」提示 / Chinese copy, hand-written browser bundle with no build step, graceful fallback under `file://`
 
 **Authoring / 创作**
 - Timeline with overlapping scenes and local-vs-global time made explicit / 时间线支持场景重叠，局部时间与全局时间界限明确
@@ -94,7 +105,7 @@ dsh plugin --profile demo remove dsh-music-code-mv                   # uninstall
 
 ## Tools / 工具
 
-The plugin registers six tools on `ctx.tools`. / 插件在 `ctx.tools` 上注册六个工具。
+The plugin registers seven tools on `ctx.tools`. / 插件在 `ctx.tools` 上注册七个工具。
 
 ### `music_mv_guide`
 
@@ -169,6 +180,41 @@ Determinism / difference check between two rendered frames: sha1 byte-compare fi
 
 Output: `{ frameA, frameB, identical, psnr, note }` — identical frames return `psnr: null` / 输出：帧号、是否一致、PSNR；完全一致时 PSNR 为 null。
 
+### `music_mv_studio`
+
+「MV 工坊」图形界面的入口：返回工作室地址、挂载状态、工程数量与当前渲染任务。 / The MV Studio entry point: returns the studio URL, mount state, project count and the current render job.
+
+| param | type | required | description |
+|---|---|---|---|
+| `action` | string | no | `status`（默认摘要）· `url`（只要地址）· `job`（只看当前任务）/ `status` · `url` · `job` |
+
+没有 `webServer` 的 profile（例如只装 `@deepseek-ai/dsh-base`）里，图形界面不挂载，工具会说明原因；七个工具本身照常可用。
+In a profile without `webServer` the GUI is not mounted and the tool says so; the other tools keep working.
+
+---
+
+## 图形界面 / MV Studio GUI
+
+宿主半边把工作室挂在 DSH 自带 webServer 的 `/music-mv` 前缀上；浏览器半边在右侧边栏注册一个页面类型，用 iframe 把同一块界面嵌进来。
+The host half registers the studio under `/music-mv` on the DSH webServer; the browser half adds one right-sidebar page type that embeds the same surface in an iframe.
+
+| route | 作用 / purpose |
+|---|---|
+| `GET /music-mv/studio` | 中文工作室页面 / the Chinese studio page |
+| `GET /music-mv/api/state` | 工作区 + 工程列表 + 当前任务 / workspace, projects, current job |
+| `POST /music-mv/api/probe` | 跑一次环境自检 / run the environment probe |
+| `POST /music-mv/api/render` | 开始渲染（`{ project, mode, width, height, duration, keys, workers }`）/ start a render |
+| `POST /music-mv/api/cancel` | 取消当前任务 / cancel the running job |
+| `GET /music-mv/api/job` | 任务快照（进度 + 日志尾部）/ job snapshot with progress and log tail |
+| `GET /music-mv/api/file?path=<rel>` | 预览联系表 / 成片（支持 Range、`download=1`）/ preview or download an artifact |
+| `GET /music-mv/api/text?path=<rel>` | 读 storyboard.md、lyrics.lrc 等文本 / read a text file |
+
+**怎么打开 / how to open**：右侧边栏标签栏的 `+` → 「MV 工坊」；插件首次激活时会自动打开一次。也可以直接用浏览器访问 `http://127.0.0.1:<port>/music-mv/studio`，或让模型调 `music_mv_studio` 拿地址。
+Open it from the tab strip's `+` → **MV Studio**; the plugin auto-opens it once on first activation. Or open `http://127.0.0.1:<port>/music-mv/studio` in a browser, or ask the model for the URL with `music_mv_studio`.
+
+**边界 / boundaries**：所有路径都解析到工作区内，`..` 越界一律 403；只允许读，不在界面上改工程源码；同一时刻只跑一个渲染任务。界面路由直接挂在 webServer 上，因此只监听回环地址（`127.0.0.1`）。
+Every path resolves inside the workspace root and `..` escapes are rejected with 403; the GUI never edits project sources; one render job at a time. The routes sit on the loopback-only webServer.
+
 ---
 
 ## CLI / 命令行
@@ -223,6 +269,7 @@ Every flag below is read by `skill/scripts/render.mjs` as documented. / 下表�
     frameFormat: jpeg      # png | jpeg → passed to the renderer as --format / → 渲染器的 --format
     chromePath: ''         # optional override → --chrome=<path> / 覆盖 Chrome 路径
     ffmpegPath: ''         # optional override → --ffmpeg=<path> / 覆盖 ffmpeg 路径
+    studioRoot: ''         # 图形界面扫描工程的工作区根，默认 process.cwd() / studio workspace root
 ```
 
 Live today: `frameFormat`, `chromePath`, `ffmpegPath` — they become `--format`, `--chrome`, `--ffmpeg` on every render. ⚠️ `projectsDir` and `softwareGl` are declared in the schema but **not yet read by `apply()`**: pass `dir` explicitly to `music_mv_init`, and use `--gl=soft` on the CLI when you need software rendering. Every knob lives in the schema rather than in code; config changes hot-replace the plugin.
@@ -269,8 +316,13 @@ A 94-second 4K60 film (5640 frames) goes from a projected ~70 minutes (1 worker,
 ## Architecture / 架构
 
 ```
-index.js                plugin entry — registers the six tools / 插件入口，注册六个工具
+index.js                plugin entry — registers the seven tools / 插件入口，注册七个工具
 lib/runner.js           spawns the bundled scripts with the host's Node / 用宿主的 Node 拉起内置脚本
+lib/studio.js           图形界面宿主半边：工程扫描 + 渲染任务 + /music-mv 路由 / GUI host half
+lib/studio.html         中文工作室页面（自包含，无构建）/ the Chinese studio page, self-contained
+lib/client.js           浏览器半边：右侧边栏「MV 工坊」页面类型（手写 ModuleLoader 包）/ GUI client half
+locale/zh.json          插件清单中文标题与描述 / localized package meta
+locale/en.json          English package meta
 cordis.patch.yml        the layer this bundle contributes / 本组合包贡献的层
 skill/
   SKILL.md              authoring guide the agent reads first / agent 先读的创作规范
@@ -283,7 +335,10 @@ skill/
     lib/signature.mjs   incremental signatures + import-graph hashing / 增量签名与 import 图哈希
     lib/encode.mjs      encoder selection + HDR10 packaging / 编码器择优与 HDR10 封装
   template/             the project skeleton music_mv_init copies / music_mv_init 复制的工程骨架
-test/plugin.test.mjs    32 assertions against a mock Cordis context / 32 条断言，跑在模拟 Cordis 上下文上
+test/plugin.test.mjs    工具契约与真实渲染（模拟 Cordis 上下文）/ tool contract + real render
+test/studio.test.mjs    图形界面宿主半边：真起 HTTP 服务跑一遍 / the GUI host half over a real HTTP server
+test/client.test.mjs    浏览器半边：假 ModuleLoader + 假 React / the client half without restarting DSH
+test/studio-shot.mjs    给工作室页面截图做目视检查 / screenshots the studio page for visual review
 sync-skill.mjs          copies skills/music-code-mv (28 files) -> skill/ (single source of truth) / 同步 28 个文件，skills/music-code-mv 为唯一事实来源
 ```
 
@@ -298,8 +353,11 @@ sync-skill.mjs          copies skills/music-code-mv (28 files) -> skill/ (single
 ## Development / 二次开发
 
 ```bash
-node test/plugin.test.mjs      # 32 assertions, no test framework
-node sync-skill.mjs --check    # bundled skill matches the source of truth
+node test/plugin.test.mjs      # 工具契约 + 真渲染（含图形界面路由断言）
+node test/studio.test.mjs      # 图形界面宿主半边：页面、状态、范围请求、越界、真跑一张联系表
+node test/client.test.mjs      # 浏览器半边：注册页面类型 / 字典 / 槽位 / 自动打开
+node test/studio-shot.mjs      # 截图到 test-workdir/shots/，用读图工具看
+node sync-skill.mjs --check    # 同步后的 skill 与唯一事实来源一致
 ```
 
 The suite loads the plugin against a mock Cordis context, verifies each tool against the documented `defineTool` contract, then actually executes probe → init → contact-sheet render. There is no test framework and no stub directory: the host packages resolve from the workspace `node_modules`.

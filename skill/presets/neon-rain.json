@@ -1,0 +1,87 @@
+{
+  "id": "neon-rain",
+  "title": "霓虹雨夜 / Neon Rain",
+  "summary": "近黑底 + 青绿主色 + 品红高光，扫描线与色差全开。像深夜终端里下不完的雨。",
+  "palette": {
+    "bg": "#04060c",
+    "dim": "#1d4b73",
+    "base": "#5eead4",
+    "accent": "#22d3ee",
+    "hot": "#ff2fa0",
+    "text": "#e8f7ff"
+  },
+  "fx": {
+    "chroma": true,
+    "chromaAmount": 2,
+    "chromaAlpha": 0.18,
+    "scanlines": true,
+    "scanAlpha": 0.1,
+    "scanGap": 3,
+    "bloom": true,
+    "bloomAlpha": 0.45,
+    "vignette": true,
+    "grain": true,
+    "grainAlpha": 0.45
+  },
+  "duration": 21,
+  "storyboard": {
+    "summary": "身份查不到、日志停不下来，只有一句歌词是清楚的。",
+    "shots": [
+      {
+        "id": "01-boot",
+        "start": 0,
+        "end": 4,
+        "what": "系统启动，身份查询失败，标题落下",
+        "style": "T1 终端 + T4 CRT",
+        "lyric": "—"
+      },
+      {
+        "id": "02-lyric",
+        "start": 4,
+        "end": 9,
+        "what": "一句歌词占满画面，入场时故障抖动",
+        "style": "T2 动态字 + T3",
+        "lyric": "第一句 → 第二句"
+      },
+      {
+        "id": "03-log-rain",
+        "start": 9,
+        "end": 12,
+        "what": "歌停了日志还在落，收尾卡",
+        "style": "T1 + T9 拼贴",
+        "lyric": "第四句 → 第五句"
+      },
+      {
+        "id": "04-particle",
+        "start": 12,
+        "end": 15,
+        "what": "种子化粒子群绕一个热点旋转，每个都拖低透明残影",
+        "style": "T10 粒子场 + T6",
+        "lyric": "—"
+      },
+      {
+        "id": "05-isometric",
+        "start": 15,
+        "end": 18,
+        "what": "等距方块沿对角线成波升起，手动做深度排序",
+        "style": "T11 等距 + T5",
+        "lyric": "—"
+      },
+      {
+        "id": "06-dataviz",
+        "start": 18,
+        "end": 21,
+        "what": "遥测看板：示波器、条带、热力网格全读 env.t",
+        "style": "T12 数据可视化 + T8",
+        "lyric": "—"
+      }
+    ]
+  },
+  "lyrics": [
+    "[00:04.20]把这里换成你的第一句",
+    "[00:05.60]把这里换成你的第二句",
+    "[00:07.00]副歌之前留一口气",
+    "[00:09.40]把这里换成你的第四句",
+    "[00:10.80]最后一句说完就关灯"
+  ]
+}
