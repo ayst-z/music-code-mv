@@ -151,7 +151,11 @@ const fakeRes = {
   writeHead(code, headers) { this.code = code; this.headers = headers; },
   end(body) { this.body = Buffer.isBuffer(body) ? body.toString('utf8') : String(body); }
 };
-await routes[0].handler({ url: '/music-mv/api/state', method: 'GET', headers: {} }, fakeRes);
+await routes[0].handler({
+  url: '/music-mv/api/state', method: 'GET',
+  headers: { 'x-music-mv': 'studio' },
+  socket: { remoteAddress: '127.0.0.1' }
+}, fakeRes);
 ok('工作室状态接口返回 200 JSON', fakeRes.code === 200 && /application\/json/.test(fakeRes.headers['content-type']),
   fakeRes.code + ' ' + fakeRes.headers['content-type']);
 const stateJson = JSON.parse(fakeRes.body);

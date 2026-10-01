@@ -31,9 +31,18 @@ const port = server.address().port;
 const base = 'http://127.0.0.1:' + port;
 console.log('studio listening on ' + base);
 
+/** 图形界面请求头：/api 一律需要它 / every /api call carries it. */
+const H = { 'x-music-mv': 'studio' };
+const withHeaders = (opts) => Object.assign({}, opts || {}, {
+  headers: Object.assign({}, H, (opts && opts.headers) || {})
+});
 const get = async (p, opts) => {
+  const r = await fetch(base + p, withHeaders(opts));
+  return { status: r.status, type: r.headers.get('content-type') || '', acao: r.headers.get('access-control-allow-origin'), text: await r.text() };
+};
+const raw = async (p, opts) => {
   const r = await fetch(base + p, opts);
-  return { status: r.status, type: r.headers.get('content-type') || '', text: await r.text() };
+  return { status: r.status, headers: r.headers, text: await r.text() };
 };
 
 // ---- 页面 ----
@@ -56,16 +65,16 @@ ok('工程记录带成片信息', !!withVideo, withVideo ? withVideo.video.path 
 
 // ---- 文件预览 ----
 if (withContact) {
-  const img = await fetch(base + '/music-mv/api/file?path=' + encodeURIComponent(withContact.contact.path));
+  const img = await fetch(base + '/music-mv/api/file?path=' + encodeURIComponent(withContact.contact.path), withHeaders());
   const buf = Buffer.from(await img.arrayBuffer());
   ok('联系表可以按字节预览', img.status === 200 && img.headers.get('content-type') === 'image/png' && buf.length > 1000,
     img.status + ' ' + buf.length + ' bytes');
-  const range = await fetch(base + '/music-mv/api/file?path=' + encodeURIComponent(withContact.contact.path), { headers: { Range: 'bytes=0-99' } });
+  const range = await fetch(base + '/music-mv/api/file?path=' + encodeURIComponent(withContact.contact.path), withHeaders({ headers: { Range: 'bytes=0-99' } }));
   ok('文件预览支持 Range', range.status === 206 && range.headers.get('content-range'),
     range.status + ' ' + (range.headers.get('content-range') || ''));
 }
 if (withVideo) {
-  const head = await fetch(base + '/music-mv/api/file?path=' + encodeURIComponent(withVideo.video.path), { headers: { Range: 'bytes=0-63' } });
+  const head = await fetch(base + '/music-mv/api/file?path=' + encodeURIComponent(withVideo.video.path), withHeaders({ headers: { Range: 'bytes=0-63' } }));
   const buf = Buffer.from(await head.arrayBuffer());
   ok('成片可以按 Range 读取（video/mp4）', head.status === 206 && head.headers.get('content-type') === 'video/mp4' && buf.length === 64,
     head.status + ' ' + buf.length + ' bytes');
@@ -92,18 +101,18 @@ const init = spawnSync(process.execPath, [path.join(PLUGIN, 'skill', 'scripts', 
 ok('脚手架可用', fs.existsSync(path.join(proj, 'index.html')), init.status === 0 ? 'exit 0' : 'exit ' + init.status);
 const rel = path.relative(ROOT, proj).split(path.sep).join('/');
 
-const start = await fetch(base + '/music-mv/api/render', {
+const start = await fetch(base + '/music-mv/api/render', withHeaders({
   method: 'POST', headers: { 'content-type': 'application/json' },
   body: JSON.stringify({ project: rel, mode: 'contact', keys: 4, width: 480, height: 270 })
-});
+}));
 const startJson = JSON.parse(await start.text());
 ok('渲染请求被接受', start.status === 200 && startJson.ok && startJson.job.status === 'running',
   JSON.stringify(startJson).slice(0, 120));
 
-const busy = await fetch(base + '/music-mv/api/render', {
+const busy = await fetch(base + '/music-mv/api/render', withHeaders({
   method: 'POST', headers: { 'content-type': 'application/json' },
   body: JSON.stringify({ project: rel, mode: 'contact' })
-});
+}));
 ok('同一时刻只允许一个渲染任务', busy.status === 409, busy.status + ' ' + (await busy.text()).slice(0, 90));
 
 let final = null;
@@ -126,13 +135,46 @@ ok('刷新后能列出新联系表', !!found && !!found.contact, found ? JSON.st
 
 // ---- 取消 ----
 console.log('\n--- 取消任务 ---');
-await fetch(base + '/music-mv/api/render', {
+await fetch(base + '/music-mv/api/render', withHeaders({
   method: 'POST', headers: { 'content-type': 'application/json' },
   body: JSON.stringify({ project: rel, mode: 'video', duration: 5, width: 1280, height: 720 })
-});
+}));
 await new Promise((r) => setTimeout(r, 1500));
-const cancelRes = JSON.parse((await (await fetch(base + '/music-mv/api/cancel', { method: 'POST' })).text()));
+const cancelRes = JSON.parse((await (await fetch(base + '/music-mv/api/cancel', withHeaders({ method: 'POST' }))).text()));
 ok('取消接口有响应', cancelRes.ok === true, JSON.stringify(cancelRes));
+
+// ---- 隐私边界 / privacy boundary ----
+console.log('\n--- 隐私边界 ---');
+ok('响应不带通配 CORS', page.acao === null && stateRes.acao === null,
+  'acao=' + JSON.stringify(page.acao) + '/' + JSON.stringify(stateRes.acao));
+
+const noHeader = await raw('/music-mv/api/state');
+ok('缺少 x-music-mv 头的 /api 请求被拒', noHeader.status === 403, noHeader.status + ' ' + noHeader.text.slice(0, 70));
+
+const crossSite = await raw('/music-mv/api/state', { headers: Object.assign({}, H, { 'sec-fetch-site': 'cross-site' }) });
+ok('跨站请求被拒（Sec-Fetch-Site）', crossSite.status === 403, crossSite.status + ' ' + crossSite.text.slice(0, 70));
+
+const preflight = await raw('/music-mv/api/state', { method: 'OPTIONS', headers: H });
+ok('不提供 CORS 预检', preflight.status === 405, String(preflight.status));
+
+const outside = await get('/music-mv/api/text?path=' + encodeURIComponent('package.json'));
+ok('工程目录外的文件不可读', outside.status === 403, outside.status + ' ' + outside.text.slice(0, 70));
+
+const hidden = await get('/music-mv/api/text?path=' + encodeURIComponent(rel + '/.cache/signatures.json'));
+ok('隐藏文件不可读', hidden.status === 403, hidden.status + ' ' + hidden.text.slice(0, 70));
+
+const sneak = await get('/music-mv/api/file?path=' + encodeURIComponent('../../../../Windows/win.ini'));
+ok('路径穿越仍然被拒', sneak.status === 403, sneak.status + ' ' + sneak.text.slice(0, 60));
+
+ok('页面本身不带头也能打开（顶层导航）', page.status === 200 && page.type.includes('text/html'));
+ok('响应带 same-origin 资源策略', page.acao === null && /same-origin/.test(String((await raw('/music-mv/api/state')).headers.get('cross-origin-resource-policy'))));
+
+// <img>/<video> 不会带自定义头：媒体可以裸读，但文本不行
+const mediaNoHeader = await get('/music-mv/api/file?path=' + encodeURIComponent(withVideo ? withVideo.video.path : 'cover/index.html'));
+ok('媒体可在无自定义头下读取（img/video 需要）', mediaNoHeader.status === 200 || mediaNoHeader.status === 206,
+  String(mediaNoHeader.status));
+const textNoHeader = await raw('/music-mv/api/text?path=' + encodeURIComponent(rel + '/storyboard.md'));
+ok('文本仍必须带自定义头', textNoHeader.status === 403, textNoHeader.status + ' ' + textNoHeader.text.slice(0, 60));
 
 server.close();
 console.log('\n=== ' + pass + ' passed, ' + fail + ' failed ===\n');

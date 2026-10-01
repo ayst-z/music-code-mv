@@ -15,6 +15,15 @@ node scripts/init.mjs --list-presets               # 列出全部预设
 | \`phosphor\` | 磷光终端 / Phosphor | 纯黑 + 磷绿，扫描线最重，适合排版与终端镜头 / pure black, phosphor green, heaviest scanlines |
 | \`dusk-lofi\` | 落日低保真 / Dusk Lo-Fi | 暖橙与玫红，bloom 柔、颗粒重，适合情绪段落 / warm dusk, soft bloom, heavy grain |
 
+每张图都是该预设生成后直接渲出来的联系表（`node tools/make-docs-images.mjs` 重出）。
+Each sheet below is a real render of that preset.
+
+| ![neon-rain](img/preset-neon-rain.png) | ![ink-paper](img/preset-ink-paper.png) |
+|---|---|
+| ❄ `neon-rain` | 📄 `ink-paper` |
+| ![phosphor](img/preset-phosphor.png) | ![dusk-lofi](img/preset-dusk-lofi.png) |
+| 💚 `phosphor` | 🌇 `dusk-lofi` |
+
 ## 预设里有什么 / what a preset carries
 
 | 字段 / field | 作用 / effect |

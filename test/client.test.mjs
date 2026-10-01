@@ -71,7 +71,7 @@ for (const need of ['slots', 'locale', 'sidebarRightTabs', 'sidebarRight']) {
 }
 
 // ---- 假 ctx ----
-const calls = { dictionaries: null, definition: null, slot: null, opened: [], effects: 0 };
+const calls = { dictionaries: null, definition: null, slots: [], opened: [], effects: 0 };
 const ctx = {
   effect(fn, label) { calls.effects++; const d = fn(); return typeof d === 'function' ? d : () => {}; },
   locale: {
@@ -81,8 +81,8 @@ const ctx = {
   sidebarRightTabs: { register(def) { calls.definition = def; return () => {}; } },
   sidebarRight: { openTab(kind) { calls.opened.push(kind); } },
   slots: {
-    inject(name, cb) { calls.slotsInject = name; return cb(); },
-    register(spec, component) { calls.slot = { spec: spec, component: component }; return () => {}; }
+    inject(name, cb) { calls.slotsInject = (calls.slotsInject || []).concat([name]); return cb(); },
+    register(spec, component) { calls.slots.push({ spec: spec, component: component }); return () => {}; }
   }
 };
 mod.apply(ctx);
@@ -99,17 +99,33 @@ ok('注册了页面类型（kind + 指南入口）',
   !!calls.definition && calls.definition.kind === 'music-mv-studio' &&
   typeof calls.definition.title === 'function' && Array.isArray(calls.definition.guide) &&
   calls.definition.guide.length === 1, calls.definition ? calls.definition.kind : '');
-ok('槽位挂在 sidebar.right.pane.tab', calls.slotsInject === 'sidebar.right.pane.tab' &&
-  !!calls.slot && calls.slot.spec.name === 'sidebar.right.pane.tab' && calls.slot.spec.key === 'dsh-music-code-mv',
-  calls.slot ? JSON.stringify(calls.slot.spec) : '');
-ok('注册了若干 effect（可随插件卸载）', calls.effects >= 3, 'effects=' + calls.effects);
+const paneSlot = calls.slots.find(function (s) { return s.spec.name === 'sidebar.right.pane.tab'; });
+const dockSlot = calls.slots.find(function (s) { return s.spec.name === 'shell.overlay'; });
+ok('槽位挂在 sidebar.right.pane.tab', !!paneSlot && paneSlot.spec.key === 'dsh-music-code-mv',
+  paneSlot ? JSON.stringify(paneSlot.spec) : 'missing');
+ok('常驻面板挂在 shell.overlay', !!dockSlot && dockSlot.spec.id === 'music-mv-dock',
+  dockSlot ? JSON.stringify(dockSlot.spec) : 'missing');
+ok('常驻面板默认展开（一直显示）', (function () {
+  const tree = dockSlot && dockSlot.component({ t: (k) => k, openStudio: function () {} });
+  let hit = false;
+  const scan = (node) => {
+    if (!node || typeof node !== 'object' || hit) return;
+    if (typeof node.type === 'function') { scan(node.type(node.props || {})); return; }
+    if (node.props && node.props['data-music-mv-dock'] === '1') { hit = true; return; }
+    const kids = node.props && node.props.children;
+    if (Array.isArray(kids)) kids.forEach(scan); else scan(kids);
+  };
+  scan(tree);
+  return hit;
+})(), 'dock rendered');
+ok('注册了若干 effect（可随插件卸载）', calls.effects >= 4, 'effects=' + calls.effects);
 ok('自动打开了一次工坊页', calls.opened.length === 1 && calls.opened[0] === 'music-mv-studio',
   JSON.stringify(calls.opened));
 ok('自动打开记录了 localStorage 标记', store.get('dsh-music-code-mv.studio.opened') === '1');
 ok('自动打开的定时器已停止', intervals.every((i) => i.cleared), intervals.length + ' timer(s)');
 
 // ---- 主体组件能渲染出 iframe ----
-const tree = calls.slot.component({ t: (k) => k });
+const tree = paneSlot.component({ t: (k) => k });
 const flat = [];
 const walk = (node) => {
   if (!node || typeof node !== 'object') return;
@@ -134,7 +150,7 @@ ok('iframe 挂了 ref 与 onLoad（用于推进设计令牌）', !!frameNode && 
 // ---- 没有 http origin 时给出提示而不是坏 iframe ----
 globalThis.window.location = { protocol: 'file:', origin: 'null' };
 globalThis.location = globalThis.window.location;
-const tree2 = calls.slot.component({ t: (k) => k });
+const tree2 = paneSlot.component({ t: (k) => k });
 const flat2 = [];
 const walk2 = (node) => {
   if (!node || typeof node !== 'object') return;

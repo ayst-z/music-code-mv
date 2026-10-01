@@ -15,20 +15,21 @@
   })();
 </script>
 <style>
+  /* 兜底值取 DSH 的 neutral-bluish 与 deepseek 蓝：没有令牌时同样是 DeepSeek 配色
+     Fallbacks are DSH's own neutral-bluish ramp and DeepSeek blue. */
   :root {
-    /* 主题兜底值：没有 DSH 令牌时用 / fallbacks when DSH tokens are absent */
-    --mv-fb-bg: #fafafa; --mv-fb-surface: #ffffff; --mv-fb-raised: #f2f3f5;
-    --mv-fb-text: #17181a; --mv-fb-dim: #6b7280; --mv-fb-line: rgba(0,0,0,.10);
-    --mv-fb-hover: rgba(0,0,0,.045);
-    --mv-fb-accent: #2f6bff; --mv-fb-ok: #0f9d58; --mv-fb-warn: #b7791f; --mv-fb-bad: #d64545;
+    --mv-fb-bg: #ffffff; --mv-fb-surface: #f9fafb; --mv-fb-raised: #f1f3f5;
+    --mv-fb-text: #0f1115; --mv-fb-dim: #61666b; --mv-fb-line: #0000001a;
+    --mv-fb-hover: #2631480f;
+    --mv-fb-accent: #4176e6; --mv-fb-ok: #0f9d58; --mv-fb-warn: #b7791f; --mv-fb-bad: #d64545;
     --mv-radius: 10px;
     color-scheme: light;
   }
   :root[data-theme="dark"] {
-    --mv-fb-bg: #16171a; --mv-fb-surface: #1d1e22; --mv-fb-raised: #26272c;
-    --mv-fb-text: #ececee; --mv-fb-dim: #9aa0aa; --mv-fb-line: rgba(255,255,255,.10);
-    --mv-fb-hover: rgba(255,255,255,.06);
-    --mv-fb-accent: #6f9dff; --mv-fb-ok: #4ade80; --mv-fb-warn: #e2b04a; --mv-fb-bad: #f07171;
+    --mv-fb-bg: #151517; --mv-fb-surface: #232324; --mv-fb-raised: #2c2c2e;
+    --mv-fb-text: #f9fafb; --mv-fb-dim: #adb2b8; --mv-fb-line: #ffffff1f;
+    --mv-fb-hover: #ffffff14;
+    --mv-fb-accent: #7aaaff; --mv-fb-ok: #4ade80; --mv-fb-warn: #e2b04a; --mv-fb-bad: #f07171;
     color-scheme: dark;
   }
   :root {
@@ -40,7 +41,8 @@
     --mv-dim: var(--dsw-alias-label-tertiary, var(--mv-fb-dim));
     --mv-line: var(--dsw-alias-border-l2, var(--mv-fb-line));
     --mv-hover: var(--dsw-alias-interactive-bg-hover, var(--mv-fb-hover));
-    --mv-accent: var(--dsw-alias-state-business-primary, var(--mv-fb-accent));
+    --mv-accent: var(--dsw-alias-state-business-primary, var(--dsw-static-deepseek-500, var(--mv-fb-accent)));
+    --mv-brand: var(--dsw-static-deepseek-500, var(--dsw-alias-state-business-primary, var(--mv-fb-accent)));
     --mv-ok: var(--dsw-alias-state-success-primary, var(--mv-fb-ok));
     --mv-warn: var(--dsw-alias-state-warn-primary, var(--mv-fb-warn));
     --mv-bad: var(--dsw-alias-state-error-primary, var(--mv-fb-bad));
@@ -154,11 +156,18 @@
     return (i === 0 ? n : n.toFixed(1)) + ' ' + u[i];
   }
   function when(ms) { return ms ? new Date(ms).toLocaleString('zh-CN') : '—'; }
+  /** 所有 /api 调用都要带这个头；跨站请求会因此被挡在预检之外。 */
+  function apiFetch(url, opts) {
+    opts = opts || {};
+    var headers = Object.assign({ 'x-music-mv': 'studio' }, opts.headers || {});
+    return fetch(url, Object.assign({}, opts, { headers: headers }));
+  }
   function fileUrl(rel, bust) { return API + '/file?path=' + encodeURIComponent(rel) + (bust ? '&t=' + bust : ''); }
   function textUrl(rel) { return API + '/text?path=' + encodeURIComponent(rel); }
 
   // ---- 主题：父窗口（DSH）通过 postMessage 推过来的设计令牌 ----
   window.addEventListener('message', function (ev) {
+    if (ev.origin !== window.location.origin) return; // 只认同源的 DSH 宿主
     var d = ev.data;
     if (!d || d.source !== 'dsh-music-code-mv' || d.type !== 'theme') return;
     var root = document.documentElement;
@@ -197,7 +206,7 @@
   function textButton(label, rel) {
     var b = el('button', { text: label });
     b.onclick = function () {
-      fetch(textUrl(rel)).then(function (r) { return r.text(); }).then(function (t) {
+      apiFetch(textUrl(rel)).then(function (r) { return r.text(); }).then(function (t) {
         state.texts = { open: true, label: label, rel: rel, body: t };
         render();
       }).catch(function (e) { state.err = String(e); render(); });
@@ -253,12 +262,12 @@
       };
       start.disabled = true;
       state.err = '';
-      fetch(API + '/render', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+      apiFetch(API + '/render', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
         .then(function (r) { return r.json(); })
         .then(function (j) { if (j && j.ok === false) state.err = j.error; state.job = j.job || state.job; poll(); })
         .catch(function (e) { state.err = String(e); render(); });
     };
-    cancel.onclick = function () { fetch(API + '/cancel', { method: 'POST' }).then(function () { poll(); }); };
+    cancel.onclick = function () { apiFetch(API + '/cancel', { method: 'POST' }).then(function () { poll(); }); };
     row2.appendChild(start);
     row2.appendChild(cancel);
     row2.appendChild(el('span', { class: 'pill', text: '草稿先用 480×270' }));
@@ -360,7 +369,7 @@
   }
 
   function poll() {
-    fetch(API + '/job').then(function (r) { return r.json(); }).then(function (s) {
+    apiFetch(API + '/job').then(function (r) { return r.json(); }).then(function (s) {
       state.job = s.job;
       render();
       var running = state.job && state.job.status === 'running';
@@ -371,7 +380,7 @@
   }
 
   function refresh(withRender) {
-    return fetch(API + '/state').then(function (r) { return r.json(); }).then(function (s) {
+    return apiFetch(API + '/state').then(function (r) { return r.json(); }).then(function (s) {
       state.projects = s.projects || [];
       state.job = s.job || null;
       state.env = s.env || null;
@@ -396,7 +405,7 @@
     var txt = document.getElementById('envText');
     dot.className = 'dot run';
     txt.textContent = '自检中…';
-    fetch(API + '/probe', { method: 'POST' }).then(function (r) { return r.json(); }).then(function (s) {
+    apiFetch(API + '/probe', { method: 'POST' }).then(function (r) { return r.json(); }).then(function (s) {
       state.env = s.env;
       render();
     }).catch(function (e) { state.err = String(e); render(); });

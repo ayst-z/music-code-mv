@@ -10,7 +10,12 @@ dsh plugin --profile demo add dsh-music-code-mv
 dsh --profile demo
 ```
 
-> GitHub topic: [`dsh-plugin`](https://github.com/topics/dsh-plugin)
+[![dsh-plugin](https://img.shields.io/badge/topic-dsh--plugin-4176e6)](https://github.com/topics/dsh-plugin)
+[![DeepSeek Harness](https://img.shields.io/badge/DeepSeek%20Harness-plugin-4176e6)](https://github.com/deepseek-ai/awesome-deepseek-agent)
+[![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](./LICENSE)
+
+> 仓库已打上 [`dsh-plugin`](https://github.com/topics/dsh-plugin) 话题（GitHub 话题页会收录本插件）；收录进 [awesome-deepseek-agent](https://github.com/deepseek-ai/awesome-deepseek-agent) 的条目见 [docs/awesome-deepseek-agent-entry.md](./docs/awesome-deepseek-agent-entry.md)。
+> The repo carries the [`dsh-plugin`](https://github.com/topics/dsh-plugin) topic, and a ready entry for [awesome-deepseek-agent](https://github.com/deepseek-ai/awesome-deepseek-agent) lives in [docs/awesome-deepseek-agent-entry.md](./docs/awesome-deepseek-agent-entry.md).
 
 **中文优先 / Chinese-first.** 工具卡片与返回文本以中文为主、英文并列；浏览器端另有一块中文图形界面「MV 工坊」，内嵌在 DSH 右侧边栏，也可以直接用浏览器打开。
 Tool cards and returned text lead with Chinese; the browser half ships a Chinese **MV Studio** page in the DSH right sidebar, also reachable directly in a browser.
@@ -209,11 +214,69 @@ The host half registers the studio under `/music-mv` on the DSH webServer; the b
 | `GET /music-mv/api/file?path=<rel>` | 预览联系表 / 成片（支持 Range、`download=1`）/ preview or download an artifact |
 | `GET /music-mv/api/text?path=<rel>` | 读 storyboard.md、lyrics.lrc 等文本 / read a text file |
 
-**怎么打开 / how to open**：右侧边栏标签栏的 `+` → 「MV 工坊」；插件首次激活时会自动打开一次。也可以直接用浏览器访问 `http://127.0.0.1:<port>/music-mv/studio`，或让模型调 `music_mv_studio` 拿地址。
+**实拍 / real screenshots**（深色 / 浅色，配色跟随 DSH 的 DeepSeek 主题）：
+
+![深色 / dark](skill/reference/img/studio-dark.png)
+![浅色 / light](skill/reference/img/studio-light.png)
+
+**常驻控制面板 / always-on side panel**：插件一载入，右下角固定一块「MV 工坊」控制面板并一直显示——环境状态灯、工程下拉、一键联系表、渲染进度条、打开完整面板。它挂在 `shell.overlay` 上，只有用户主动收起才会变成一枚小胶囊，不会被卸载。完整面板挂在右侧边栏，关闭后随时可从 `+` 或面板再打开。
+On load the plugin pins a **MV Studio control panel** at the bottom-right and keeps it there: status dot, project picker, one-click contact sheet, render progress, and a button to the full panel. It registers into `shell.overlay`, so only the user's own collapse hides it — never unload.
+
+**怎么打开 / how to open**：右下角的常驻面板一直在；完整面板走右侧边栏标签栏的 `+` → 「MV 工坊」（首次激活会自动打开一次）。也可以直接用浏览器访问 `http://127.0.0.1:<port>/music-mv/studio`，或让模型调 `music_mv_studio` 拿地址。
 Open it from the tab strip's `+` → **MV Studio**; the plugin auto-opens it once on first activation. Or open `http://127.0.0.1:<port>/music-mv/studio` in a browser, or ask the model for the URL with `music_mv_studio`.
 
 **边界 / boundaries**：所有路径都解析到工作区内，`..` 越界一律 403；只允许读，不在界面上改工程源码；同一时刻只跑一个渲染任务。界面路由直接挂在 webServer 上，因此只监听回环地址（`127.0.0.1`）。
 Every path resolves inside the workspace root and `..` escapes are rejected with 403; the GUI never edits project sources; one render job at a time. The routes sit on the loopback-only webServer.
+
+---
+
+## 预设 / Presets
+
+四个开箱即用的预设：一条命令拿到配色、后期、时长、分镜与占位歌词，生成即可渲染。下面是它们各自的实拍联系表。
+Four ready-to-use presets: one command yields palette, post-processing, duration, storyboard and placeholder lyrics. The sheets below are real renders.
+
+| `neon-rain` 霓虹雨夜 | `ink-paper` 纸墨 |
+|---|---|
+| ![neon-rain](skill/reference/img/preset-neon-rain.png) | ![ink-paper](skill/reference/img/preset-ink-paper.png) |
+| `phosphor` 磷光终端 | `dusk-lofi` 落日低保真 |
+| ![phosphor](skill/reference/img/preset-phosphor.png) | ![dusk-lofi](skill/reference/img/preset-dusk-lofi.png) |
+
+```bash
+node skill/scripts/init.mjs my-mv --preset=neon-rain   # 套用预设 / apply a preset
+node skill/scripts/init.mjs --list-presets             # 列出预设 / list presets
+node tools/make-docs-images.mjs                        # 重出上面这些图 / regenerate these images
+```
+
+细节见 [skill/reference/presets.md](skill/reference/presets.md)。
+
+---
+
+## 隐私 / Privacy
+
+**结论：插件不联网、不埋点、不读工程以外的文件。** 完整审计与复查清单见 [docs/PRIVACY.md](./docs/PRIVACY.md)。
+**Verdict: the plugin makes no outbound requests, ships no telemetry, and never reads outside your projects.** Full audit and review checklist: [docs/PRIVACY.md](./docs/PRIVACY.md).
+
+| 边界 / boundary | 做法 / how |
+|---|---|
+| 出网 / outbound | 运行时代码零外部 URL、零遥测 SDK；`fetch` 只打自己的同源 `/music-mv/api` |
+| 界面访问 / studio access | 只服务回环地址；跨站请求（`Sec-Fetch-Site`）一律拒；`/api` 需要 `x-music-mv: studio` 头，跨域预检拿不到许可 |
+| 文件读取 / file reads | 只允许已发现工程目录内的文件，隐藏文件（`.env`、`.git`）一律 403，路径穿越 403 |
+| 跨源使用 / cross-origin use | 不发任何 `Access-Control-Allow-Origin`，响应带 `Cross-Origin-Resource-Policy: same-origin` |
+| 消息 / postMessage | 只发给自己的同源 iframe，且只认同源父窗口的消息 |
+
+改过渲染内核或配色后，跑这两条就够 / after touching the render kernel or palettes, run:
+
+```bash
+node test/privacy.test.mjs   # 出网 / 个人路径 / 确定性 / 工作室契约 / 预设完整性
+node test/studio.test.mjs    # 真起服务，含隐私边界断言
+```
+
+---
+
+## 收录 / Listing
+
+- GitHub 话题：仓库已打 **`dsh-plugin`**、`deepseek-harness`、`deepseek`、`dsh`、`music-video`、`canvas`、`threejs`、`ffmpeg` → 出现在 <https://github.com/topics/dsh-plugin>。
+- `awesome-deepseek-agent`：该列表收录的是"agent/harness"整体，本插件以 **DeepSeek Harness 的插件**身份投稿，条目草稿已写好：[docs/awesome-deepseek-agent-entry.md](./docs/awesome-deepseek-agent-entry.md)（一条表格行 + 一份 `docs/deepseek_harness.md` 指南草案）。
 
 ---
 
