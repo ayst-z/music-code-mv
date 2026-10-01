@@ -56,6 +56,7 @@ The core constraint that buys all of this: **`renderAt(t)` is a pure function**.
 
 **图形界面 / GUI** (0.2.0)
 - 右侧边栏「MV 工坊」页面：首次自动打开一次，之后从标签栏的 `+` 里选 / a right-sidebar **MV Studio** page, auto-opened once, re-openable from the tab strip's `+`
+- 对话框标题栏右上角入口：图标+「MV 工坊」，窗口或对话框变窄时折叠为纯图标（悬停有提示、跟随明暗主题），点开即进入右侧边栏的同一张工坊页面；宿主接口不可达时按钮如实标注离线 / a conversation-titlebar top-right entry (icon + label, collapsing to icon-only in narrow windows or dialogs, hover tooltip, light/dark aware) that opens the same studio page, honestly marked offline when the host API is unreachable
 - 工程浏览：自动扫描工作区里的 MV 工程（project.json + index.html），显示分辨率、帧率、时长、场景数、缓存帧数 / project discovery with resolution, fps, duration, scene and cached-frame counts
 - 预览：联系表 PNG 直接看，成片 MP4 带 Range 流式播放（拖动进度不用整段下载）/ contact sheets inline, films streamed with range requests
 - 渲染：联系表 / 静帧 / 视频三种模式，宽高、时长、关键帧、并行数都能改；进度条 + 实时日志 + 取消 / render from the panel with live progress, log and cancel

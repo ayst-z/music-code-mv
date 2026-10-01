@@ -2,5 +2,11 @@
   "meta": {
     "title": "MV Studio",
     "description": "Write a music video as code: a Chinese GUI plus a deterministic render pipeline."
+  },
+  "entry": {
+    "label": "MV Studio",
+    "tooltip": "Open MV Studio: projects, contact sheets and films, render status",
+    "offline": "MV Studio (offline: host API unreachable — the page shows its offline panel)",
+    "unavailable": "MV Studio page unavailable: the page type is not registered."
   }
 }

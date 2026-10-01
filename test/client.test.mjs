@@ -78,7 +78,10 @@ const ctx = {
     bind: () => (key) => key,
     register(ns, dict) { calls.dictionaries = { ns: ns, dict: dict }; return () => {}; }
   },
-  sidebarRightTabs: { register(def) { calls.definition = def; return () => {}; } },
+  sidebarRightTabs: {
+    register(def) { calls.definition = def; return () => {}; },
+    get(kind) { return calls.definition && calls.definition.kind === kind ? calls.definition : undefined; }
+  },
   sidebarRight: { openTab(kind) { calls.opened.push(kind); } },
   slots: {
     inject(name, cb) { calls.slotsInject = (calls.slotsInject || []).concat([name]); return cb(); },
@@ -140,6 +143,75 @@ ok('自动打开了一次工坊页', calls.opened.length === 1 && calls.opened[0
   JSON.stringify(calls.opened));
 ok('自动打开记录了 localStorage 标记', store.get('dsh-music-code-mv.studio.opened') === '1');
 ok('自动打开的定时器已停止', intervals.every((i) => i.cleared), intervals.length + ' timer(s)');
+
+// ---- 标题栏右上角入口 / conversation-titlebar top-right entry ----
+const utilSlot = calls.slots.find(function (s) { return s.spec.name === 'conversation.session.header.utilities'; });
+ok('入口挂在 conversation.session.header.utilities 槽位', !!utilSlot,
+  utilSlot ? utilSlot.spec.id : 'missing');
+ok('入口 id / order / locale（右侧排列、走自身字典）',
+  !!utilSlot && utilSlot.spec.id === 'music-mv-studio-entry' && utilSlot.spec.order >= 100 &&
+  utilSlot.spec.locale === 'musicCodeMv',
+  utilSlot ? JSON.stringify({ id: utilSlot.spec.id, order: utilSlot.spec.order, locale: utilSlot.spec.locale }) : '');
+const entryInject = utilSlot && typeof utilSlot.spec.inject === 'function' ? utilSlot.spec.inject() : null;
+ok('入口注入了 openStudio 句柄', !!entryInject && typeof entryInject.openStudio === 'function');
+const entryT = (k) => (calls.dictionaries.dict.zh[k] !== undefined ? calls.dictionaries.dict.zh[k] : k);
+const entryTree = utilSlot ? utilSlot.component({ t: entryT, openStudio: entryInject ? entryInject.openStudio : function () {} }) : null;
+const entryNodes = [];
+const walkEntry = (node) => {
+  if (!node || typeof node !== 'object') return;
+  if (typeof node.type === 'function') { walkEntry(node.type(node.props || {})); return; }
+  entryNodes.push(node);
+  const kids = node.props && node.props.children;
+  if (Array.isArray(kids)) kids.forEach(walkEntry); else walkEntry(kids);
+};
+walkEntry(entryTree);
+const entryBtn = entryNodes.find((n) => n.type === 'button');
+const entryLabel = entryNodes.find((n) => n.props && n.props.className === 'dshMvEntryLabel');
+ok('入口渲染按钮 + 图标 + label + 悬停提示',
+  !!entryBtn && entryBtn.props['data-music-mv-entry'] === '1' &&
+  typeof entryBtn.props.title === 'string' && entryBtn.props.title === entryBtn.props['aria-label'] &&
+  entryBtn.props.title === calls.dictionaries.dict.zh['entry.tooltip'] &&
+  !!entryNodes.find((n) => n.type === 'svg') && !!entryLabel && entryLabel.props.children === 'MV 工坊',
+  entryBtn ? String(entryBtn.props.title) : 'no button');
+ok('自适应：容器查询 + 窗口查询都把 label 折叠成纯图标', (function () {
+  const src = fs.readFileSync(CLIENT, 'utf8');
+  return src.includes('@container (max-width: 760px)') && src.includes('@media (max-width: 960px)') &&
+    src.includes('.dshMvEntryLabel{display:none;') && src.includes('dsh-music-code-mv-entry-style') &&
+    src.includes("'conversation.session.header.utilities'");
+})(), 'adaptive css + slot source wired');
+// 点击 → 打开已注册的 music-mv-studio 页面类型
+calls.opened.length = 0;
+if (entryBtn && typeof entryBtn.props.onClick === 'function') entryBtn.props.onClick();
+ok('点击入口打开已注册的工坊页', calls.opened.length === 1 && calls.opened[0] === 'music-mv-studio',
+  JSON.stringify(calls.opened));
+// 页面类型缺席 → 退回宿主工作室地址（真实地址，不伪造）
+const realTabGet = ctx.sidebarRightTabs.get;
+const realWindowOpen = globalThis.window.open;
+const openedUrls = [];
+ctx.sidebarRightTabs.get = function () { return undefined; };
+globalThis.window.open = function (u) { openedUrls.push(String(u)); };
+const howUrl = entryInject ? entryInject.openStudio() : 'none';
+ok('页面类型缺席时退回宿主工作室地址', howUrl === 'url' && openedUrls.length === 1 &&
+  openedUrls[0] === 'http://127.0.0.1:19387/music-mv/studio',
+  howUrl + ' ' + JSON.stringify(openedUrls));
+// 连宿主地址都没有 → 如实返回 none（离线提示，不伪造）
+globalThis.window.location = { protocol: 'file:', origin: 'null' };
+globalThis.location = globalThis.window.location;
+const howNone = entryInject ? entryInject.openStudio() : 'missing';
+ok('拿不到任何数据源时如实返回 none', howNone === 'none', howNone);
+globalThis.window.location = { protocol: 'http:', origin: 'http://127.0.0.1:19387' };
+globalThis.location = globalThis.window.location;
+ctx.sidebarRightTabs.get = realTabGet;
+globalThis.window.open = realWindowOpen;
+// locale 双文件镜像入口文案（中文优先）
+const zhLoc = JSON.parse(fs.readFileSync(path.join(PLUGIN, 'locale', 'zh.json'), 'utf8'));
+const enLoc = JSON.parse(fs.readFileSync(path.join(PLUGIN, 'locale', 'en.json'), 'utf8'));
+ok('locale 双文件镜像了入口文案（中文优先）',
+  !!zhLoc.entry && !!enLoc.entry && zhLoc.entry.label === 'MV 工坊' &&
+  zhLoc.entry.tooltip === calls.dictionaries.dict.zh['entry.tooltip'] &&
+  enLoc.entry.label === calls.dictionaries.dict.en['entry.label'] &&
+  enLoc.entry.tooltip === calls.dictionaries.dict.en['entry.tooltip'],
+  zhLoc.entry ? zhLoc.entry.label + ' / ' + enLoc.entry.label : 'missing');
 
 // ---- 主体组件能渲染出 iframe ----
 const tree = paneSlot.component({ t: (k) => k });
