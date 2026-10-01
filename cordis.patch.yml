@@ -1,0 +1,5 @@
+# music-code-mv — code-rendered music video toolchain.
+# Injected into a profile by: dsh plugin --profile <name> add dsh-music-code-mv
+- insert:
+    - id: music-code-mv
+      name: dsh-music-code-mv

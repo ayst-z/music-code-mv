@@ -1,0 +1,31 @@
+{
+  "name": "dsh-music-code-mv",
+  "version": "0.1.0",
+  "description": "DSH plugin: render code-driven music videos (music-code-mv). Deterministic Canvas2D/Three.js shots captured in headless Chrome and encoded with ffmpeg.",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "lib",
+    "cordis.patch.yml",
+    "skill",
+    "README.md"
+  ],
+  "keywords": ["dsh-plugin", "deepseek-harness", "music-code-mv", "music-video", "canvas", "three.js", "ffmpeg", "animation"],
+  "license": "MIT",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "*",
+    "@deepseek-ai/dsh-tools": "*",
+    "@deepseek-ai/schemastery": "*"
+  },
+  "engines": { "node": ">=18" }
+}

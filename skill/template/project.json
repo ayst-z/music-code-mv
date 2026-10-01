@@ -1,0 +1,23 @@
+{
+  "name": "__NAME__",
+  "width": 1280,
+  "height": 720,
+  "fps": 30,
+  "duration": 21,
+  "lyrics": "lyrics.lrc",
+  "palette": {
+    "bg": "#04060c",
+    "dim": "#1d4b73",
+    "base": "#5eead4",
+    "accent": "#22d3ee",
+    "hot": "#ff2fa0",
+    "text": "#e8f7ff"
+  },
+  "fx": {
+    "chroma": true, "chromaAmount": 2, "chromaAlpha": 0.18,
+    "scanlines": true, "scanAlpha": 0.10, "scanGap": 3,
+    "bloom": true, "bloomAlpha": 0.45,
+    "vignette": true,
+    "grain": true, "grainAlpha": 0.45
+  }
+}

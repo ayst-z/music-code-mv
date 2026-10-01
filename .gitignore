@@ -1,0 +1,7 @@
+node_modules/
+test-workdir/
+.cache/
+out/
+frames/
+*.log
+.DS_Store
