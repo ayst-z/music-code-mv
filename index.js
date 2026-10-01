@@ -62,6 +62,46 @@ const READABLE = {
   lineage: path.join(SKILL_DIR, 'reference', 'lineage.md')
 };
 
+/**
+ * 文本 + 可选图片：联系表这类产物直接作为 image 块回到对话里，
+ * 因此不需要起 HTTP 服务也能「看见」渲染结果。
+ * Text plus an optional image block, so artifacts land in the chat itself.
+ */
+const textOrImageTool = (name, description, parameters, run) => defineTool({
+  name,
+  description,
+  parameters,
+  output: {
+    schema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        text: { type: 'string', required: true },
+        attachment: { type: 'object', additionalProperties: true, description: '可选图片附件 / optional image attachment' }
+      }
+    },
+    render: (_args, value) => {
+      const blocks = [];
+      if (value && value.attachment) blocks.push({ type: 'image', attachment: value.attachment });
+      blocks.push({ type: 'text', text: (value && value.text) || '' });
+      return blocks;
+    }
+  },
+  execute: run
+});
+
+/** 把磁盘上的图片存成可放进对话的附件；没有 attachments 服务就返回 null。 */
+async function attachImage(ctx, file) {
+  const attachments = typeof ctx.get === 'function' ? ctx.get('attachments') : undefined;
+  if (!attachments || typeof attachments.saveImage !== 'function' || !fs.existsSync(file)) return null;
+  try {
+    const mediaType = /\.png$/i.test(file) ? 'image/png' : 'image/jpeg';
+    return await attachments.saveImage({ data: fs.readFileSync(file), mediaType, name: path.basename(file) });
+  } catch {
+    return null; // 图片存不进去不影响渲染本身 / a failed attach never fails the render
+  }
+}
+
 const textTool = (name, description, parameters, run) => defineTool({
   name,
   description,
@@ -244,7 +284,7 @@ export function apply(ctx, config) {
     }
   ));
 
-  ctx.tools.register(textTool(
+  ctx.tools.register(textOrImageTool(
     'music_mv_render',
     '渲染一支 MV 工程。mode=contact 把等距关键帧拼成一张 PNG 联系表（自检环节——务必用读图工具看它）；' +
     'mode=stills 导出指定时间戳；mode=video 渲染全部帧并用 ffmpeg 编码成 MP4。帧带缓存，' +
@@ -274,22 +314,22 @@ export function apply(ctx, config) {
     async (args) => {
       const projectDir = path.resolve(String(args.projectDir));
       if (!fs.existsSync(path.join(projectDir, 'index.html'))) {
-        return '目录里没有 index.html / No index.html in ' + projectDir + '。先用 music_mv_init 生成一个工程。';
+        return { text: '目录里没有 index.html / No index.html in ' + projectDir + '。先用 music_mv_init 生成一个工程。' };
       }
       const mode = String(args.mode || 'contact');
       if (!['contact', 'stills', 'video', 'sheet'].includes(mode)) {
         // an unknown/typo'd mode used to fall through to the default full render —
         // the most expensive possible answer to a typo
-        return '未知模式 / Unknown mode "' + mode + '"：请用 contact | stills | video | sheet。';
+        return { text: '未知模式 / Unknown mode "' + mode + '"：请用 contact | stills | video | sheet。' };
       }
       if (args.engine !== undefined && !['chrome', 'node'].includes(String(args.engine))) {
-        return '未知引擎 / Unknown engine "' + args.engine + '"：请用 chrome | node。';
+        return { text: '未知引擎 / Unknown engine "' + args.engine + '"：请用 chrome | node。' };
       }
       if (args.format !== undefined && !['jpeg', 'jpg', 'png'].includes(String(args.format).toLowerCase())) {
-        return '未知帧格式 / Unknown format "' + args.format + '"：请用 jpeg | png。';
+        return { text: '未知帧格式 / Unknown format "' + args.format + '"：请用 jpeg | png。' };
       }
       if (args.orientation !== undefined && !['landscape', 'portrait'].includes(String(args.orientation).toLowerCase())) {
-        return '未知方向 / Unknown orientation "' + args.orientation + '"：请用 landscape | portrait。';
+        return { text: '未知方向 / Unknown orientation "' + args.orientation + '"：请用 landscape | portrait。' };
       }
       const argv = ['--project=' + projectDir];
       if (mode === 'contact') argv.push('--contact');
@@ -322,7 +362,15 @@ export function apply(ctx, config) {
         : mode === 'video'
           ? 'MP4 已写出。交付前核对时长与流。 / MP4 written — verify duration and streams before delivering.'
           : undefined;
-      return formatResult('music-code-mv 渲染 / render (' + mode + ')', r, { note });
+      const text = formatResult('music-code-mv 渲染 / render (' + mode + ')', r, { note });
+      // 联系表直接进对话：把 PNG 作为图片块附在文本之前
+      let attachment = null;
+      if (mode === 'contact' || mode === 'sheet') {
+        const outRel = String(args.out || 'out/contact.png');
+        const sheet = path.isAbsolute(outRel) ? outRel : path.join(projectDir, outRel);
+        attachment = await attachImage(ctx, sheet);
+      }
+      return { text, attachment };
     }
   ));
 
@@ -494,9 +542,9 @@ export function apply(ctx, config) {
       const lines = [];
       if (!instance) {
         lines.push('## MV 工坊 / MV Studio');
-        lines.push('当前 profile 没有 webServer，图形界面未挂载 / no webServer in this profile: the studio surface is not mounted.');
-        lines.push('六个工具照常可用；要图形界面，请用带 Web 或桌面版的 profile 启动 DSH。');
-        lines.push('The six tools keep working; use a Web/Desktop profile to get the GUI.');
+        lines.push('当前 profile 没有 webServer：工作室网页不可用，但常驻面板会以**离线模式**工作（按钮把要求直接交给模型），七个工具照常可用。');
+        lines.push('No webServer here: the studio page is unavailable, but the dock falls back to offline mode and hands requests to the model. Tools keep working.');
+        lines.push('联系表会在渲染完成后作为图片直接回到对话里 / contact sheets come back into the chat as images.');
         return lines.join('\n');
       }
       const snap = instance.snapshot();

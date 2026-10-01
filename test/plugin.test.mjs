@@ -112,7 +112,12 @@ ok('contact render produced a sheet', fs.existsSync(sheet) && fs.statSync(sheet)
 
 console.log('\n--- error handling ---');
 const bad = await byName.music_mv_render.execute({ projectDir: path.join(WORK, 'nope'), mode: 'contact' });
-ok('render refuses a project with no index.html', typeof bad === 'string' && bad.includes('No index.html'));
+ok('render refuses a project with no index.html', typeof bad.text === 'string' && bad.text.includes('No index.html'));
+ok('渲染返回 {text, attachment}（图片块可选）',
+  typeof bad.text === 'string' && byName.music_mv_render.output.schema.properties.attachment !== undefined &&
+  typeof byName.music_mv_render.output.schema.properties.attachment.additionalProperties === 'boolean');
+ok('render 输出渲染成块', Array.isArray(byName.music_mv_render.output.render({}, bad)) &&
+  byName.music_mv_render.output.render({}, bad)[0].type === 'text');
 const badTopic = await byName.music_mv_guide.execute({ topic: 'nonsense' });
 ok('guide rejects an unknown topic', typeof badTopic === 'string' && badTopic.includes('Unknown topic'));
 
@@ -121,7 +126,7 @@ console.log('\n--- 中文（zh-first）---');
 const cjk = new RegExp('[\\u4e00-\\u9fff]');
 ok('工具描述是中文优先', registered.every(t => cjk.test(t.description)),
   registered.filter(t => !cjk.test(t.description)).map(t => t.name).join(',') || 'all zh-first');
-ok('渲染错误提示中英并列', bad.includes('没有 index.html') && bad.includes('No index.html'), bad.slice(0, 80));
+ok('渲染错误提示中英并列', bad.text.includes('没有 index.html') && bad.text.includes('No index.html'), bad.text.slice(0, 80));
 
 // ---- 图形界面：挂到模拟 webServer 上 / studio wiring ----
 console.log('\n--- 图形界面 / studio ---');

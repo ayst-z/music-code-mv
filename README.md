@@ -225,6 +225,9 @@ On load the plugin pins a **MV Studio control panel** at the bottom-right and ke
 **怎么打开 / how to open**：右下角的常驻面板一直在；完整面板走右侧边栏标签栏的 `+` → 「MV 工坊」（首次激活会自动打开一次）。也可以直接用浏览器访问 `http://127.0.0.1:<port>/music-mv/studio`，或让模型调 `music_mv_studio` 拿地址。
 Open it from the tab strip's `+` → **MV Studio**; the plugin auto-opens it once on first activation. Or open `http://127.0.0.1:<port>/music-mv/studio` in a browser, or ask the model for the URL with `music_mv_studio`.
 
+**无服务也能用 / works without the service**：没有 `webServer` 的 profile（headless、TUI、纯 base）里，工作室网页不挂载，但常驻面板自动进入**离线模式**——不轮询、不发请求，按钮把要求直接交给模型；渲染完成后**联系表会作为图片直接回到对话里**。HTTP 路由只是给内嵌面板加速的可选项，不是插件的必需品。
+In a profile without `webServer`, the studio page is absent but the dock switches to **offline mode**: no polling, no requests, actions go to the model, and **contact sheets return to the chat as image blocks**. The HTTP routes are an optional accelerator, never a requirement.
+
 **边界 / boundaries**：所有路径都解析到工作区内，`..` 越界一律 403；只允许读，不在界面上改工程源码；同一时刻只跑一个渲染任务。界面路由直接挂在 webServer 上，因此只监听回环地址（`127.0.0.1`）。
 Every path resolves inside the workspace root and `..` escapes are rejected with 403; the GUI never edits project sources; one render job at a time. The routes sit on the loopback-only webServer.
 

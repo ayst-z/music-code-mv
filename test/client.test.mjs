@@ -105,6 +105,15 @@ ok('槽位挂在 sidebar.right.pane.tab', !!paneSlot && paneSlot.spec.key === 'd
   paneSlot ? JSON.stringify(paneSlot.spec) : 'missing');
 ok('常驻面板挂在 shell.overlay', !!dockSlot && dockSlot.spec.id === 'music-mv-dock',
   dockSlot ? JSON.stringify(dockSlot.spec) : 'missing');
+ok('面板在无 webServer 时可离线工作', (function () {
+  const src = fs.readFileSync(CLIENT, 'utf8');
+  return src.includes("probe === 'absent'") && src.includes("'dock.noService'") &&
+    src.includes('askAgent(') && !src.includes('setInterval(refresh, 5000)');
+})(), 'offline rail wired');
+ok('页面主体有离线降级分支', (function () {
+  const src = fs.readFileSync(CLIENT, 'utf8');
+  return src.includes("svc === 'absent'") && src.includes("'fallback.noService'");
+})(), 'sidebar fallback wired');
 ok('字典有一键开启对话文案', !!calls.dictionaries.dict.zh['dock.start'] && !!calls.dictionaries.dict.en['dock.start'],
   calls.dictionaries.dict.zh['dock.start'] + ' / ' + calls.dictionaries.dict.en['dock.start']);
 ok('面板实现了一键开启对话（按钮 + onKickoff + 会话作用域发送）', (function () {
