@@ -26,7 +26,7 @@ import crypto from 'node:crypto';
 import { defineTool } from '@deepseek-ai/dsh-tools';
 import Schema from '@deepseek-ai/schemastery';
 import { SKILL_DIR, PLUGIN_ROOT, runScript, formatResult } from './lib/runner.js';
-import { createStudio, STUDIO_PAGE } from './lib/studio.js';
+import { createStudio, STUDIO_PAGE, findProjects } from './lib/studio.js';
 import { runFfmpeg } from './skill/scripts/lib/encode.mjs';
 
 export const name = 'music-code-mv';
@@ -168,17 +168,27 @@ const textBlock = (text) => [{ type: 'text', text }];
  * 用它当工作区根会扫不到任何工程（面板空白的根因）。
  * Resolve the user's workspace instead of the host process cwd.
  */
-function resolveStudioRoot(ctx) {
+function resolveStudioRoot(ctx, cfg) {
+  const candidates = [];
+  const push = (p) => {
+    if (typeof p !== 'string' || !p) return;
+    const abs = path.resolve(p);
+    if (!candidates.includes(abs)) candidates.push(abs);
+  };
+  if (cfg && cfg.studioRoot) push(cfg.studioRoot);
+  push(process.cwd()); // 命令行在工程目录里启动时，它就是答案 / CLI launched from the project
   try {
     const registry = typeof ctx.get === 'function' ? ctx.get('workspaceRegistry') : null;
     const list = registry && typeof registry.list === 'function' ? registry.list() : [];
-    const withSessions = list.filter((w) => {
-      try { return Array.isArray(w.sessionIds) && w.sessionIds.length > 0; } catch { return false; }
-    });
-    const pick = (withSessions.length ? withSessions : list).slice(-1)[0];
-    if (pick && typeof pick.path === 'string' && fs.existsSync(pick.path)) return pick.path;
-  } catch { /* 没有注册表就退回 cwd / no registry: fall back to cwd */ }
-  return process.cwd();
+    for (const w of list.slice().reverse()) push(w && w.path);
+  } catch { /* 没有注册表就只用上面两个 / no registry */ }
+  const existing = candidates.filter((c) => { try { return fs.existsSync(c) && fs.statSync(c).isDirectory(); } catch { return false; } });
+  // 注册表里可能有好几个项目目录：优先挑真的**有 MV 工程**的那个，
+  // 否则面板会对着一个空工作区显示「没有工程」—— 用户看到的就是「没成功」。
+  for (const c of existing) {
+    try { if (findProjects(c).length > 0) return c; } catch { /* 扫不动就跳过 */ }
+  }
+  return existing[0] || process.cwd();
 }
 
 export function apply(ctx, config) {
@@ -193,7 +203,7 @@ export function apply(ctx, config) {
     ctx.inject(['webServer'], (webCtx) => {
       const instance = createStudio(cfg.studioRoot
         ? { root: cfg.studioRoot }
-        : { resolveRoot: () => resolveStudioRoot(ctx) });
+        : { resolveRoot: () => resolveStudioRoot(ctx, cfg) });
       const dispose = instance.register(webCtx.webServer);
       studio.current = instance;
       if (typeof webCtx.effect === 'function') {

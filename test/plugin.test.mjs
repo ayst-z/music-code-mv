@@ -13,6 +13,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PLUGIN = path.resolve(HERE, '..');
 const WORK = path.join(PLUGIN, 'test-workdir');
+const WORKSPACE = path.resolve(PLUGIN, '..', '..');
+const EMPTY_WS = path.join(WORK, 'empty-ws');
 
 let pass = 0, fail = 0;
 const ok = (name, cond, detail = '') => {
@@ -138,7 +140,8 @@ const ctx2 = {
   // 桌面版进程的 cwd 是 profile 目录：工作区根必须来自注册表，不能来自 cwd
   get(name) {
     if (name !== 'workspaceRegistry') return undefined;
-    return { list: () => [{ path: PLUGIN, sessionIds: ['s1'] }] };
+    // 注册表里最后一项是空目录、前一项才有工程：必须挑有工程的那个
+    return { list: () => [{ path: WORKSPACE, sessionIds: ['s1'] }, { path: EMPTY_WS, sessionIds: [] }] };
   },
   inject(deps, cb) {
     ok('图形界面只依赖 webServer', Array.isArray(deps) && deps.length === 1 && deps[0] === 'webServer', JSON.stringify(deps));
@@ -153,8 +156,9 @@ const studioInfo = await studioTool.execute({});
 ok('studio 工具返回中文摘要与地址',
   studioInfo.includes('MV 工坊') && studioInfo.includes('/music-mv/studio') && studioInfo.includes('工程 projects'),
   studioInfo.split('\n').slice(0, 3).join(' | '));
-ok('工作室根目录解析到注册表里的工作区（不是 cwd）',
-  studioInfo.includes('工作区 workspace: ' + PLUGIN), studioInfo.split('\n')[2]);
+ok('工作室根目录挑「有 MV 工程」的工作区，而不是空目录',
+  studioInfo.includes('工作区 workspace: ' + WORKSPACE) && !studioInfo.includes('工作区 workspace: ' + EMPTY_WS),
+  studioInfo.split('\n')[2]);
 const studioUrl = await studioTool.execute({ action: 'url' });
 ok('studio action=url 只回地址', /^http:\/\/127\.0\.0\.1:\d+\/music-mv\/studio$/.test(studioUrl), studioUrl);
 
