@@ -112,6 +112,8 @@
   a.pill:hover { background: var(--mv-hover); }
   .err { color: var(--mv-bad); font-size: 12px; }
   .muted { color: var(--mv-dim); font: 11px var(--mv-mono); }
+  .swatches { display: inline-flex; gap: 3px; flex: none; }
+  .swatches i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; border: 1px solid var(--mv-line); }
 </style>
 </head>
 <body>
@@ -131,7 +133,7 @@
 (function () {
   var API = '/music-mv/api';
   var NL = String.fromCharCode(10);
-  var state = { projects: [], selected: null, job: null, env: null, root: '', texts: {}, err: '' };
+  var state = { projects: [], selected: null, job: null, env: null, root: '', texts: {}, err: '', presets: [], tiers: [] };
   var timer = null;
 
   function el(tag, attrs, kids) {
@@ -221,6 +223,77 @@
     if (min != null) input.min = String(min);
     wrap.appendChild(input);
     return wrap;
+  }
+
+  /** 渲染档位：点一下就把分辨率/并行/关键帧写进下面的渲染表单。 */
+  function applyTier(tier) {
+    var w = document.getElementById('w'); if (w) w.value = tier.width;
+    var h = document.getElementById('h'); if (h) h.value = tier.height;
+    var k = document.getElementById('keys'); if (k) k.value = tier.keys;
+    var n = document.getElementById('workers'); if (n) n.value = tier.workers;
+    state.err = '';
+    render();
+  }
+
+  /** 风格预设：直接读 skill/presets/*.json。 */
+  function scaffold(presetId) {
+    var input = document.getElementById('newdir');
+    var dir = (input && input.value.trim()) || ('mv-' + presetId);
+    state.err = '';
+    apiFetch(API + '/scaffold', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ dir: dir, preset: presetId, force: true })
+    }).then(function (r) { return r.json(); }).then(function (j) {
+      if (j && j.ok === false) { state.err = j.error; render(); return; }
+      state.selected = j.dir;
+      return refresh(true);
+    }).catch(function (e) { state.err = String(e); render(); });
+  }
+
+  function renderPresets() {
+    var card = el('div', { class: 'card' });
+    card.appendChild(el('h2', { text: '预设' }));
+
+    var tiers = state.tiers || [];
+    if (tiers.length) {
+      card.appendChild(el('div', { class: 'meta', html: '<b>渲染档位</b> 点一下填好下面的渲染参数' }));
+      var trow = el('div', { class: 'row' });
+      trow.style.marginTop = '6px';
+      tiers.forEach(function (tier) {
+        var b = el('button', { text: tier.title, title: tier.note });
+        b.onclick = function () { applyTier(tier); };
+        trow.appendChild(b);
+      });
+      card.appendChild(trow);
+    }
+
+    var presets = state.presets || [];
+    if (presets.length) {
+      card.appendChild(el('div', { class: 'meta', html: '<b>风格预设</b> 生成即可渲染：配色 + 后期 + 时长 + 分镜 + 占位歌词' }));
+      var srow = el('div', { class: 'row' });
+      srow.style.marginTop = '6px';
+      srow.appendChild(el('input', { type: 'text', id: 'newdir', placeholder: '新工程目录，如 mv-neon' }));
+      card.appendChild(srow);
+      presets.forEach(function (p) {
+        var line = el('div', { class: 'row' });
+        line.style.marginTop = '6px';
+        var swatch = el('span', { class: 'swatches' });
+        var pal = p.palette || {};
+        ['bg', 'base', 'accent', 'hot', 'text'].forEach(function (k) {
+          if (!pal[k]) return;
+          var dot = el('i', { title: k + ' ' + pal[k] });
+          dot.style.background = pal[k];
+          swatch.appendChild(dot);
+        });
+        line.appendChild(swatch);
+        line.appendChild(el('span', { class: 'meta', html: '<b>' + esc(p.title || p.id) + '</b> ' + esc(p.summary || '') + ' <span class="muted">' + (p.duration ? p.duration + 's · ' : '') + (p.shots || 0) + ' 镜</span>' }));
+        var use = el('button', { text: '用它建工程' });
+        use.onclick = function () { scaffold(p.id); };
+        line.appendChild(use);
+        card.appendChild(line);
+      });
+    }
+    return card;
   }
 
   function renderControls(p) {
@@ -347,6 +420,7 @@
       if (p.video) tools.appendChild(el('a', { class: 'pill', href: fileUrl(p.video.path, p.video.mtime) + '&download=1', text: '下载成片' }));
       head.appendChild(tools);
       d.appendChild(head);
+      d.appendChild(renderPresets());
       d.appendChild(renderControls(p));
       d.appendChild(renderJob());
       d.appendChild(renderPreview(p));
@@ -392,6 +466,13 @@
           if (at > bestAt) { bestAt = at; best = p; }
         });
         state.selected = (best || state.projects[0]).path;
+      }
+      if (!state.tiers.length || !state.presets.length) {
+        apiFetch(API + '/presets').then(function (r) { return r.json(); }).then(function (j) {
+          state.tiers = (j && j.tiers) || [];
+          state.presets = (j && j.presets) || [];
+          render();
+        }).catch(function () { /* 预设接口不可用就跳过 / presets optional */ });
       }
       if (withRender !== false) render();
       if (s.job && s.job.status === 'running' && !timer) timer = setTimeout(poll, 1000);

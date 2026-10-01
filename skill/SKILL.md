@@ -15,6 +15,9 @@ The agent acts as **director + renderer**: storyboard first, build shot by shot,
 
 ## 不可妥协的规矩 (Non-negotiable rules)
 
+0. **先问清楚，再动手。** 写任何场景代码、跑任何渲染之前，先向用户逐步确认：**用途与画幅**、**时长**、**风格**（用哪个预设或哪套配色）、**歌词来源**、**音频**、**交付分辨率**。每一项都给出推荐和理由，再用两三句话说明你打算怎么做，等用户确认后再进入下一步。没确认就渲染 = 返工。
+0. **Interview before you build.** Before any scene code or render, confirm with the user, step by step: purpose and aspect ratio, duration, style (which preset or palette), lyric source, audio, delivery resolution. Recommend and justify each one, state your plan in two or three sentences, then wait for a yes.
+
 1. **先分镜，后代码。** 先写 `storyboard.md`（镜头、秒数、风格、调色板、歌词提示），把它定下来之后再写场景代码。永远不要从一块空白画布起手。
 2. **每一帧都是虚拟时间 `t` 的纯函数。** 页面对外暴露 `window.renderAt(t)`。禁止 `requestAnimationFrame`，禁止 `Date.now()`、`performance.now()`，禁止在绘制时调用 `Math.random()`（改用带种子的 PRNG）。正是这一条让渲染是确定性的、可续跑的、可并行的。
 3. **亲眼查看自己的输出。** 每做完一个场景，渲染一张联系表，然后*用读图工具看这张图*。看到什么问题就修什么。没看过的帧不要交付。
@@ -29,9 +32,11 @@ The agent acts as **director + renderer**: storyboard first, build shot by shot,
 
 ## 工作流 (Workflow)
 
-七步工作流：需求 → 分镜；搭脚手架；逐镜头搭建；用联系表自检并读图判断；改了再查（联系表很便宜，秒级）；正式渲染；最后封装音频、核对时长与流、交付 MP4。
+八步工作流：**先问清楚** → 分镜；搭脚手架；逐镜头搭建；用联系表自检并读图判断；改了再查（联系表很便宜，秒级）；正式渲染；最后封装音频、核对时长与流、交付 MP4。
 
 ```
+0. interview  → ask the user: ratio, duration, style/preset, lyrics, audio, delivery size
+                (recommend + explain, then WAIT for confirmation)
 1. brief      → storyboard.md (shots + seconds + lyric cues + palette)
 2. scaffold   → node skills/music-code-mv/scripts/init.mjs <project-dir> [--preset=<id>]
 3. build      → one scene module per shot in src/scenes/
@@ -42,7 +47,31 @@ The agent acts as **director + renderer**: storyboard first, build shot by shot,
 7. finish     → mux audio, verify duration/streams, present the MP4
 ```
 
-Seven steps: brief → storyboard; scaffold; build one scene module per shot; check with `--contact` and judge the sheet PNG; iterate (contact sheets are cheap: seconds); render the MP4; finish by muxing audio, verifying duration/streams and presenting the file.
+Eight steps: **interview** → storyboard; scaffold; build one scene module per shot; check with `--contact` and judge the sheet PNG; iterate; render the MP4; finish by muxing audio, verifying duration/streams and presenting the file.
+
+### 0. 询问 —— 先问，再动手 (Interview — ask first)
+
+**没有这一步就不要开始渲染。** 用 `ask_user_question` 一次问 4–6 个问题，每个选项都写清后果；拿到答复再写分镜。**Ask before you build:** one `ask_user_question` call, 4–6 questions, each option carrying its tradeoff; only then write the storyboard.
+
+必问的六项 / always ask:
+
+| # | 问什么 | 选项建议 | 为什么问 |
+|---|---|---|---|
+| 1 | 用途与画幅 | 16:9 横屏 / 9:16 竖屏 / 1:1 | 决定 `--w --h --orientation`，返工最贵的一项 |
+| 2 | 时长 | 15s / 30s / 60s / 自定义 | 决定镜头数与总帧数（60s@30fps = 1800 帧） |
+| 3 | 风格 | `neon-rain` / `ink-paper` / `phosphor` / `dusk-lofi` / 自定配色 | 直接决定调色板与后期强度 |
+| 4 | 歌词来源 | 用户提供 LRC / 我写占位 / 无歌词纯器乐 | 决定分镜是否锚到歌词行 |
+| 5 | 音频 | 用户给文件 / 先用 TTS 旁白 / 先出无声画面 | 决定封装与时长对齐 |
+| 6 | 交付分辨率 | 480×270 草稿 / 1280×720 / 1920×1080 / 4K | 决定是迭代还是直接出片 |
+
+问完后**先用两三句话复述计划**（几镜、每镜做什么、什么配色、预计渲染多久），再写 `storyboard.md`。
+After the answers, restate the plan in two or three sentences (how many shots, what each does, which palette, expected render cost) **before** writing the storyboard.
+
+面板里也有对应预设：MV 工坊面板的「渲染档位」与「风格预设」可以在点渲染之前先把这些设置选好。
+The MV Studio panel mirrors this: its render-tier and style presets set these choices before you hit render.
+
+中途改变主意（换风格、改时长、换画幅）同样要先问再动——预设有的是，重做的代价是整支片子。
+Changing your mind mid-way goes through the same gate.
 
 ### 1. 分镜 (Storyboard)
 

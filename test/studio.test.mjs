@@ -143,6 +143,29 @@ await new Promise((r) => setTimeout(r, 1500));
 const cancelRes = JSON.parse((await (await fetch(base + '/music-mv/api/cancel', withHeaders({ method: 'POST' }))).text()));
 ok('取消接口有响应', cancelRes.ok === true, JSON.stringify(cancelRes));
 
+// ---- 预设 / presets ----
+console.log('
+--- 预设 ---');
+const presetRes = await get('/music-mv/api/presets');
+const presetJson = JSON.parse(presetRes.text);
+ok('预设接口返回风格预设', presetRes.status === 200 && (presetJson.presets || []).length >= 4,
+  (presetJson.presets || []).map((p) => p.id).join(','));
+ok('预设接口返回渲染档位', (presetJson.tiers || []).length >= 4,
+  (presetJson.tiers || []).map((t) => t.id).join(','));
+const scaf = await fetch(base + '/music-mv/api/scaffold', withHeaders({
+  method: 'POST', headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ dir: 'test-workdir/studio-scaffold', preset: 'ink-paper', force: true })
+}));
+const scafJson = JSON.parse(await scaf.text());
+ok('一键用预设建工程', scaf.status === 200 && scafJson.ok === true &&
+  fs.existsSync(path.join(ROOT, 'test-workdir', 'studio-scaffold', 'index.html')),
+  JSON.stringify(scafJson).slice(0, 110));
+const badPreset = await fetch(base + '/music-mv/api/scaffold', withHeaders({
+  method: 'POST', headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ dir: 'test-workdir/x', preset: 'nope/../x' })
+}));
+ok('非法预设 id 被拒', badPreset.status >= 400, String(badPreset.status));
+
 // ---- 隐私边界 / privacy boundary ----
 console.log('\n--- 隐私边界 ---');
 ok('响应不带通配 CORS', page.acao === null && stateRes.acao === null,
