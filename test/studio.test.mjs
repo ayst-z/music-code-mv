@@ -144,8 +144,7 @@ const cancelRes = JSON.parse((await (await fetch(base + '/music-mv/api/cancel', 
 ok('取消接口有响应', cancelRes.ok === true, JSON.stringify(cancelRes));
 
 // ---- 预设 / presets ----
-console.log('
---- 预设 ---');
+console.log(String.fromCharCode(10) + '--- 预设 ---');
 const presetRes = await get('/music-mv/api/presets');
 const presetJson = JSON.parse(presetRes.text);
 ok('预设接口返回风格预设', presetRes.status === 200 && (presetJson.presets || []).length >= 4,
