@@ -245,16 +245,25 @@ The host half registers the studio under `/music-mv` on the DSH webServer; the b
 | 动作 | 降级链 / fallback chain |
 |---|---|
 | **以队友/子代理开工**（主按钮） | 宿主原生 `agentTeams.spawnTeammate` → `POST /music-mv/api/kickoff` → 当前会话发出「以子代理/队友形式开工」→ 复制开工指令到剪贴板；**每一级都如实回报走到哪一级，绝不谎报成功** |
-| 打开工作室页面 | 已注册的页面类型 → 宿主工作室地址 → 如实提示打不开 |
-| 渲染联系表 | 没有工程就说没有；提交失败就报失败 |
+| 渲染联系表 | 插件自己 `POST /music-mv/api/render`（不经模型）；没有工程就说没有，失败就报失败，渲完同源 `<img>` 直接预览 |
+| 风格画廊 | 17 套预设的**离线内置展示图**（384×216 WebP data-URI，零网络零路由）；回落链：内嵌图 → 宿主真实配色渐变 → 灰块+如实标注，绝不编颜色 |
 | 复制工作区路径 | 剪贴板被拦时如实报「复制失败」 |
+
+**预设区**：清晰度（含**自定义**档，宽/高 16–7680，localStorage 记忆）、风格（17 档，**中文名**三级回落：宿主 title 中文段 → 内置中文名 → 英文 id）、帧率（跟随工程 / 24 / 25 / 30 / 60 / 120），下拉右侧 **⇄ 横竖屏切换**（先尝试对上内置档，对不上落自定义；非法输入不写进开工提示词）。三者都会写进开工提示词。
 
 宽度不够时 label 折叠成纯图标（`@container (max-width: 760px)` 优先，`@media (max-width: 960px)` 兜底），`title` + `aria-label` 常驻；样式走宿主设计令牌，明暗主题自动跟随。
 
 The top-right **codeMV** button in the conversation title bar opens a **native popup** built from standard DOM tags and host design tokens — no custom element, no embedded page, and **no bottom-right floating window**. Its first screen shows live `/music-mv/api/state` values (workspace, project count, current job) and says *offline* honestly when the API is unreachable — never placeholder data. The primary action **kicks off as a teammate/subagent** through a four-stage fallback chain (native `agentTeams.spawnTeammate` → `POST /music-mv/api/kickoff` → send the instruction to the current session → clipboard), reporting which stage actually worked.
 
-**怎么打开 / how to open**：标题栏右上角的 **codeMV** 按钮就是入口（本体常驻，随时可点）。完整面板走右侧边栏标签栏的 `+` → 「MV 工坊」（首次激活会自动打开一次）。也可以直接用浏览器访问 `http://127.0.0.1:<port>/music-mv/studio`，或让模型调 `music_mv_studio` 拿地址。
-The **codeMV** button is always in the title bar; the full panel lives in the sidebar tab strip under `+` → **MV Studio** (auto-opened once on first activation). Or open `http://127.0.0.1:<port>/music-mv/studio` in a browser, or ask the model for the URL with `music_mv_studio`.
+**三个入口，全是原生 / three native entry points, none of them a web page**：
+
+1. **标题栏 codeMV 弹层** —— 本体常驻，随时点开；三区结构（固定头部 / 可滚主体 / 钉底动作区），可展开成 760px 大窗（同锚点重量、Esc 先收起再关、`localStorage` 记住偏好）。
+2. **对话视图环标签页「MV 工坊」** —— 注册进宿主 `conversation.view`（`order:20`，与「对话」「轨迹」并列），标签条按注册项自动生成、宿主 `activateView` 切换、**仅激活时挂载**；组件是弹层的 page 模式（铺满视图区、无锚定无关闭键），与弹层**共用同一套状态与分级面板**，两套外壳不会漂移。
+3. **右侧边栏「MV 工坊」** —— 只读原生状态镜像（无 iframe），首次激活自动打开一次。
+
+另可直接用浏览器访问 `http://127.0.0.1:<port>/music-mv/studio`，或让模型调 `music_mv_studio` 拿地址。
+
+All three are native: the title-bar popup (three zones, expandable to 760 px on the same anchor), the **MV Studio tab in the conversation view ring** (registered into `conversation.view` next to 对话/轨迹, mounted only while active, reusing the popup's component as a full-page mode), and the read-only sidebar status mirror. The HTTP studio URL remains available for browsers and the `music_mv_studio` tool.
 
 **无服务也能用 / works without the service**：没有 `webServer` 的 profile（headless、TUI、纯 base）里，工作室状态拿不到，侧栏状态镜像与弹层自动进入**离线模式**——不轮询、不发请求，「把要求交给模型」用一段以 `/music-code-mv` 开头的交接提示走**队友/子代理**降级链；渲染完成后**联系表会作为图片直接回到对话里**。HTTP 路由只是给状态与直渲加速的可选项，不是插件的必需品。
 In a profile without `webServer` the studio page is absent and the sidebar body switches to **offline mode**: no polling, no requests, actions go straight to the model (kickoff still falls back through the teammate/subagent chain), and **contact sheets return to the chat as image blocks**. The HTTP routes are an optional accelerator, never a requirement.
