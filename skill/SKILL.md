@@ -83,6 +83,36 @@ node skills/music-code-mv/scripts/tts.mjs --brand --out=narration/01.wav "写好
 
 For published films use one consistent voice: `--brand` reads `voices/brand.json` (same field shape as a character preset, falling back voicedesign → 茉莉 → 冰糖).
 
+### 写台词 (Writing the narration)
+
+台词的三条硬要求：**生动有吸引力、语言简洁明快、表意准确**——三者冲突时，**准确 > 简洁 > 生动**：一句漂亮的错话是 bug，一句正确但啰嗦的话只是难看。
+
+Three hard requirements: vivid, crisp, accurate. When they collide the order is **accurate > concise > vivid** — a beautifully wrong line is a bug; a wordy right one is merely ugly.
+
+```text
+fn write_line(shot, fact):
+    assert fact verified (实测值 or 文档值)        # 表意准确是前提，不许近似
+    line = one_sentence(one_idea, verb_first)      # 一句只说一件事，动词打头有画面
+    line = inject_concrete(line, numbers)          # 数字胜过形容词：具体才有吸引力
+    line = strip(line, [其实,非常,可以说是,我们,再次,进行了])  # 简洁：删掉不干活的字
+    assert length(line) <= shot.seconds * 5.0      # 读得完（中文实测 ≈4.8–5.2 字/秒）
+    assert matches(line, shot.event)               # 台词必须对应画面里**正在发生**的事
+    if read_aloud(line) is 扭口: rewrite           # 靠改句子救，不靠标点硬撑
+    return line
+```
+
+**前后对比 / before vs after**：
+
+| 平（啰嗦 + 抽象）| 生动（简洁 + 具体）|
+|---|---|
+| 我们的渲染引擎进行了优化，性能得到了显著提升。 | 一帧从 46 毫秒降到 18 毫秒。 |
+| 系统支持很多种不同的显示风格，非常丰富。 | 二十七种显示风格，从 CRT 到机械翻牌。 |
+| 安装的过程其实是非常简单的，只需要几步就可以完成。 | 两步：克隆仓库，一条 `dsh plugin add`。 |
+
+**几条可执行的规则 / executable rules**：① 每句一个信息点，要串多件事就拆成多句；② 名词带修饰不如带数字（「17.3 GB 帧缓存」胜过「大量缓存」）；③ 结尾落在重音上，短句收尾比长句有力；④ 与镜头事件一一对齐——**镜头里没有的事，台词不许说**；⑤ 有旁白的片子里，台词就是节奏：先量旁白实测时长，再按它排镜头（见上一节）。
+
+One idea per line; concrete numbers over adjectives; end on a stressed beat; never narrate something the shot is not showing; and because narration *is* the rhythm, measure each clip first and lay the shots around it.
+
 拿到各段时长后按下表排时间线，再用 `adelay=<ms>:all=1` 把每段摆到它的镜头起点、`amix=inputs=N:normalize=0` 合成一条 `track.wav`（`apad=whole_dur=<总长>` 补齐），最后 `--audio=narration/track.wav` 交给渲染器封装，`-shortest` 保证音画同长。
 
 `--probe` 会把失败原因说清楚：`NOT READY` 后面跟着「没配 API Key」（去 设置 → 插件 → dsh-xiaomi-tts 存一个 Key）、「DSH 没开/端口不对」或「上游没回音频」。**不要**在没 probe 的情况下假设配音可用，也不要拿 TTS 失败当静音片交差——先问用户。
