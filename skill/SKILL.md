@@ -83,6 +83,24 @@ node skills/music-code-mv/scripts/tts.mjs --brand --out=narration/01.wav "写好
 
 For published films use one consistent voice: `--brand` reads `voices/brand.json` (same field shape as a character preset, falling back voicedesign → 茉莉 → 冰糖).
 
+### 配乐 (The score)
+
+自己作曲，不依赖素材库：`scripts/music.py` 程序化生成，默认 **96 kHz / 24-bit 立体声**（hi-res），峰值 −1.5 dBFS。
+
+```bash
+python scripts/music.py --out=audio/score.wav --sec=107 --plan "7d,26l,45d,20l,9d"   # 按分镜亮暗区间
+python scripts/music.py --out=audio/s.wav --sec=120 --light-each=15 --bpm=104 --seed=7
+```
+
+- **`--plan`**（秒 + `l`/`d`）：按**分段色彩脚本**的边界给亮暗区间，音乐切点与画面切点一致。实测一段 107s 五分区的配乐：切点 7/33/78/98 逐一吻合，亮段 presence 2.18% vs 暗段 0.06% = **34.5× 对比**。
+- **`--light-each`**：等长亮暗交替；不给则按和弦段自动。
+- 内在结构：Am–F–C–G 和声 + 低频侧链 duck + 鼓组（亮段加密 hi-hat）+ 段落 riser/impact + 中/侧展宽；**亮段 17kHz 以下全频 + shimmer，暗段 4kHz 低通**——这就是「亮色暗色鲜明对比」的实现。
+- 确定性：`--seed`；`--ar/--bits` 可改采样率与位深（`--bits 16` 给兼容场景）。
+
+**核验口径（听不了就量）**：① presence 比 = 能量(1.5–16k)/能量(<400Hz) 的亮/暗对比；② 拍点能量 vs 拍间能量（>1 才算有节奏）；③ L/R 相关系数（<0.9 才有宽度）；④ 分窗能量变异系数（过低=死板噪声底）。生成器实测：拍点 2.1×、L/R 0.867、CV 0.35。
+
+Scores are composed procedurally (no sample libraries) at 96 kHz/24-bit by default. `--plan` aligns light/dark sections to the film's colour script; `--light-each` alternates evenly. Since you cannot listen during a headless run, validate with the four numbers above — presence ratio, beat-vs-off-beat energy, L/R correlation and the energy coefficient of variation.
+
 ### 写台词 (Writing the narration)
 
 台词的三条硬要求：**生动有吸引力、语言简洁明快、表意准确**——三者冲突时，**准确 > 简洁 > 生动**：一句漂亮的错话是 bug，一句正确但啰嗦的话只是难看。
