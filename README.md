@@ -17,7 +17,7 @@ dsh --profile demo
 > 仓库已打上 [`dsh-plugin`](https://github.com/topics/dsh-plugin) 话题（GitHub 话题页会收录本插件）；收录进 [awesome-deepseek-agent](https://github.com/deepseek-ai/awesome-deepseek-agent) 的条目见 [docs/awesome-deepseek-agent-entry.md](./docs/awesome-deepseek-agent-entry.md)。
 > The repo carries the [`dsh-plugin`](https://github.com/topics/dsh-plugin) topic, and a ready entry for [awesome-deepseek-agent](https://github.com/deepseek-ai/awesome-deepseek-agent) lives in [docs/awesome-deepseek-agent-entry.md](./docs/awesome-deepseek-agent-entry.md).
 
-**中文优先 / Chinese-first.** 工具卡片与返回文本以中文为主、英文并列；浏览器端另有一块中文图形界面「MV 工坊」，内嵌在 DSH 右侧边栏，也可以直接用浏览器打开。
+**中文优先 / Chinese-first.** 工具卡片与返回文本以中文为主、英文并列；浏览器端是标题栏的 **codeMV 原生弹层**——状态、清晰度/风格/帧率预设、联系表直渲与风格画廊全在弹层里，**不内嵌任何网页**；右侧边栏只保留一块只读的原生状态镜像（无 iframe），另可直接用浏览器打开工作室地址。
 Tool cards and returned text lead with Chinese; the browser half ships a Chinese **MV Studio** page in the DSH right sidebar, also reachable directly in a browser.
 
 ---
@@ -142,6 +142,17 @@ Scaffold a project: timeline, seeded PRNG, Canvas2D stage, lyric parsing, and a 
 
 Render a contact sheet, stills, or a full MP4. Frames are cached, so a re-run resumes instead of starting over. / 渲染联系表、静帧或完整 MP4。帧有缓存，重跑是续渲而不是从头开始。
 
+**NumPy 引擎的 hi-res / HDR 通道**（`render-np.py`，与上表同契约）：
+
+| 能力 | 命令 | 说明 |
+|---|---|---|
+| **流式输出** | `--stream` | 帧直管道给 ffmpeg，`frames/` 零字节（4K120 一次渲省 17–18 GB）；代价是**不能断点续渲** |
+| **hi-res** | `--w=3840 --h=2160 --fps=120 --format=jpeg` | CLI 覆盖工程参数；`frames/.renderpass` 档位指纹防止复用错档缓存；jpeg 比 png 快约 3 倍 |
+| **HDR10** | `--depth=10 --hdr10` | 强制走流式：`v*257` → `rgb48le` → `yuv420p10le` + BT.2020/PQ + libx265 |
+| **HDR Vivid** | `--hdr-vivid` | 自动升 10-bit，逐帧算动态元数据写 `<out>.hdrvivid.json`（本机 ffmpeg 无 CUVA 编码器，SEI 由下游合入） |
+
+实测：4K120 HDR10 流式 **51 ms/帧、落盘 0**；`apply_fx` 优化后 76→16 ms（bloom 走 1/4 分辨率）。详见 [skill/reference/numpy-pillow.md](skill/reference/numpy-pillow.md)。
+
 | param | type | required | description |
 |---|---|---|---|
 | `projectDir` | string | **yes** | project directory containing `index.html` / 含 `index.html` 的工程目录 |
@@ -201,8 +212,8 @@ In a profile without `webServer` the GUI is not mounted and the tool says so; th
 
 ## 图形界面 / MV Studio GUI
 
-宿主半边把工作室挂在 DSH 自带 webServer 的 `/music-mv` 前缀上；浏览器半边在右侧边栏注册一个页面类型，用 iframe 把同一块界面嵌进来。
-The host half registers the studio under `/music-mv` on the DSH webServer; the browser half adds one right-sidebar page type that embeds the same surface in an iframe.
+宿主半边把工作室挂在 DSH 自带 webServer 的 `/music-mv` 前缀上；浏览器半边注册一个右侧边栏页面类型，主体是**原生 DOM 的状态镜像**（工程数、渲染状态、离线交接），**不含 iframe、不调 `window.open`**——所有交互都在 codeMV 弹层里完成。
+The host half registers the studio under `/music-mv` on the DSH webServer; the browser half adds one right-sidebar page type whose body is a **native-DOM status mirror** (project count, render state, offline hand-off) with no iframe and no `window.open` — every interaction happens inside the codeMV popup.
 
 | route | 作用 / purpose |
 |---|---|
@@ -215,7 +226,14 @@ The host half registers the studio under `/music-mv` on the DSH webServer; the b
 | `GET /music-mv/api/file?path=<rel>` | 预览联系表 / 成片（支持 Range、`download=1`）/ preview or download an artifact |
 | `GET /music-mv/api/text?path=<rel>` | 读 storyboard.md、lyrics.lrc 等文本 / read a text file |
 
-**实拍 / real screenshots**（深色 / 浅色，配色跟随 DSH 的 DeepSeek 主题）：
+**控制面板 / the control panel**（全新）—— 标题栏 **codeMV** 弹层的三区结构：状态（工作区 / 工程数 / 任务·进度·速度·预计·状态**五条分条**）+ 预设区（清晰度 5 档、风格 17 档、帧率 6 档）+ 四个动作（以队友/子代理开工、渲染联系表、风格画廊、复制工作区路径）：
+
+![codeMV control panel](skill/reference/img/panel-codeMV.png)
+
+> 这张图是 `node tools/make-panel-shots.mjs` 用**真实 `lib/client.js` 组件**（连样式都由真实代码 `ensureEntryStyle()` 注入）经迷你 React 运行时挂载后截的——结构、文案、CSS 全部来自仓库源码；状态数据是写死样例（工作区路径掩码为 `<workspace>`、无渲染任务），所以它是**组件渲染图**，不是运行中 GUI 的抓图。可复现：同一条命令重跑即得。
+> Captured from the real component (the shot tool mounts `lib/client.js` with a minimal React runtime and lets the real code inject its own CSS), so structure, copy and styles come from the repository's source. The state is a fixed sample with a masked workspace path — a component render, not a live-shell capture.
+
+**工作室 HTTP 面 / studio HTTP surface**（深色 / 浅色，配色跟随 DSH 的 DeepSeek 主题）：
 
 ![深色 / dark](skill/reference/img/studio-dark.png)
 ![浅色 / light](skill/reference/img/studio-light.png)
@@ -238,7 +256,7 @@ The top-right **codeMV** button in the conversation title bar opens a **native p
 **怎么打开 / how to open**：标题栏右上角的 **codeMV** 按钮就是入口（本体常驻，随时可点）。完整面板走右侧边栏标签栏的 `+` → 「MV 工坊」（首次激活会自动打开一次）。也可以直接用浏览器访问 `http://127.0.0.1:<port>/music-mv/studio`，或让模型调 `music_mv_studio` 拿地址。
 The **codeMV** button is always in the title bar; the full panel lives in the sidebar tab strip under `+` → **MV Studio** (auto-opened once on first activation). Or open `http://127.0.0.1:<port>/music-mv/studio` in a browser, or ask the model for the URL with `music_mv_studio`.
 
-**无服务也能用 / works without the service**：没有 `webServer` 的 profile（headless、TUI、纯 base）里，工作室网页不挂载，侧栏主体自动进入**离线模式**——不轮询、不发请求，按钮把要求直接交给模型（开工同样走队友/子代理降级链）；渲染完成后**联系表会作为图片直接回到对话里**。HTTP 路由只是给内嵌面板加速的可选项，不是插件的必需品。
+**无服务也能用 / works without the service**：没有 `webServer` 的 profile（headless、TUI、纯 base）里，工作室状态拿不到，侧栏状态镜像与弹层自动进入**离线模式**——不轮询、不发请求，「把要求交给模型」用一段以 `/music-code-mv` 开头的交接提示走**队友/子代理**降级链；渲染完成后**联系表会作为图片直接回到对话里**。HTTP 路由只是给状态与直渲加速的可选项，不是插件的必需品。
 In a profile without `webServer` the studio page is absent and the sidebar body switches to **offline mode**: no polling, no requests, actions go straight to the model (kickoff still falls back through the teammate/subagent chain), and **contact sheets return to the chat as image blocks**. The HTTP routes are an optional accelerator, never a requirement.
 
 **边界 / boundaries**：所有路径都解析到工作区内，`..` 越界一律 403；只允许读，不在界面上改工程源码；同一时刻只跑一个渲染任务。界面路由直接挂在 webServer 上，因此只监听回环地址（`127.0.0.1`）。
@@ -329,6 +347,8 @@ Six shots, all WebGL: **①** 30k-particle nebula with an expanding shock ring �
 
 **实测性能 / measured performance**：`930 帧 720p → 17.3s`（8 workers，约 54 fps 吞吐、18.5 ms/帧），编码器日志自动带 `[hardware verified — test frame encoded]`。同一分辨率下 Canvas2D 全 FX 约 255 ms/帧——**走硬件 GL 的 3D 反而更快**，因为 `FX3D` 把重复的2D 后期关掉了，辉光在 GPU 上由 UnrealBloom 一次做完。`930 frames of 720p in 17.3s` (8 workers, ~54 fps, 18.5 ms/frame) versus ~255 ms/frame for Canvas2D with the full 2D FX chain — hardware-GL 3D is the *faster* path here, not the expensive one.
 
+**发布 / Releases**：小样走 Release（母版超 git 的 100MB 上限）—— <https://github.com/ayst-z/music-code-mv/releases/tag/v0.2.0> 含 4 支预览共 10.1 MB（feature-demo 720p、720p-v2 高码率、9:16 竖版、3D 展示 640×360）。派生命令与分类见 `docs/GITHUB.md` §6。
+
 ---
 
 ## 隐私 / Privacy
@@ -342,7 +362,7 @@ Six shots, all WebGL: **①** 30k-particle nebula with an expanding shock ring �
 | 界面访问 / studio access | 只服务回环地址；跨站请求（`Sec-Fetch-Site`）一律拒；`/api` 需要 `x-music-mv: studio` 头，跨域预检拿不到许可 |
 | 文件读取 / file reads | 只允许已发现工程目录内的文件，隐藏文件（`.env`、`.git`）一律 403，路径穿越 403 |
 | 跨源使用 / cross-origin use | 不发任何 `Access-Control-Allow-Origin`，响应带 `Cross-Origin-Resource-Policy: same-origin` |
-| 消息 / postMessage | 只发给自己的同源 iframe，且只认同源父窗口的消息 |
+| 消息 / postMessage | 只发同源目标，且监听端先核对 `event.origin`（绝不通配）；弹层不发任何跨源消息 |
 
 改过渲染内核或配色后，跑这两条就够 / after touching the render kernel or palettes, run:
 

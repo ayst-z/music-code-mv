@@ -6,7 +6,6 @@
   "entry": {
     "label": "codeMV",
     "tooltip": "codeMV · MV 工坊 / MV Studio",
-    "offline": "MV 工坊（离线：宿主接口不可达，弹层里会如实显示离线）",
-    "unavailable": "打不开工作室页面：插件页面类型没有注册成功。"
+    "offline": "MV 工坊（离线：宿主接口不可达，弹层里会如实显示离线）"
   }
 }

@@ -6,7 +6,6 @@
   "entry": {
     "label": "codeMV",
     "tooltip": "codeMV · MV Studio / MV 工坊",
-    "offline": "MV Studio (offline: host API unreachable — the popup says so honestly)",
-    "unavailable": "The studio page cannot be opened: the plugin page type failed to register."
+    "offline": "MV Studio (offline: host API unreachable — the popup says so honestly)"
   }
 }

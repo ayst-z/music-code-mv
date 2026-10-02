@@ -150,7 +150,8 @@ def _out_path(project: Path, spec: str) -> Path:
 
 
 def frame_path(project: Path, frame: int) -> Path:
-    return project / "frames" / ("f%05d.png" % frame)
+    ext = "jpg" if str(load_project(project).get("frameFormat", "png")).lower() in ("jpeg", "jpg") else "png"
+    return project / "frames" / (("f%05d." % frame) + ext)
 
 
 def render_frame(project: Path, frame: int, force: bool = False) -> str:
@@ -179,7 +180,12 @@ def render_frame(project: Path, frame: int, force: bool = False) -> str:
         img = Image.fromarray(arr.astype(np.uint8), "RGB")
     out.parent.mkdir(parents=True, exist_ok=True)
     tmp = out.with_name(out.name + ".tmp")
-    img.save(tmp, "PNG")
+    # 帧容器按分辨率选：PNG 恒无损（compress_level 不影响画质，只影响写盘速度）；
+    # hi-res 用 jpeg（quality 92、4:4:4）比 PNG 快约 3 倍 —— 与 Chrome 引擎的 frameFormat 同名同义。
+    if str(cfg.get("frameFormat", "png")).lower() in ("jpeg", "jpg"):
+        img.save(tmp, "JPEG", quality=int(cfg.get("jpegQuality", 92)), subsampling=0)
+    else:
+        img.save(tmp, "PNG", compress_level=int(cfg.get("pngLevel", 1)))
     os.replace(tmp, out)
     return "rendered"
 
@@ -220,13 +226,58 @@ def ensure_signature(project: Path) -> str:
 
 # ---------------------------------------------------------------- fx stack
 
+def _box1d(a, axis: int, r: int = 1):
+    """radius-r 盒式模糊的一维 pass，用积分图（cumsum）实现 —— 每像素代价与半径无关。"""
+    n = a.shape[axis]
+    padcfg = [(0, 0)] * a.ndim
+    padcfg[axis] = (r, r)
+    p = np.pad(a, padcfg, mode="edge")
+    c = np.cumsum(p, axis=axis, dtype=np.float32)
+    zshape = list(c.shape)
+    zshape[axis] = 1
+    c = np.concatenate([np.zeros(zshape, dtype=np.float32), c], axis=axis)
+    win = 2 * r + 1
+    hi = [slice(None)] * c.ndim
+    lo = [slice(None)] * c.ndim
+    hi[axis] = slice(win, win + n)
+    lo[axis] = slice(0, n)
+    return (c[tuple(hi)] - c[tuple(lo)]) / np.float32(win)
+
+
 def _box_blur3(a, passes: int = 2):
+    """3×3 盒式模糊的**可分离**实现：每 pass 一次竖向 + 一次横向（积分图），
+    与原来的 9 抽头二维卷积等价，但每像素从 ~18 次加法降到 ~4 次。"""
     for _ in range(passes):
-        p = np.pad(a, ((1, 1), (1, 1), (0, 0)), mode="edge")
-        a = ((p[:-2, :-2] + p[:-2, 1:-1] + p[:-2, 2:] +
-              p[1:-1, :-2] + p[1:-1, 1:-1] + p[1:-1, 2:] +
-              p[2:, :-2] + p[2:, 1:-1] + p[2:, 2:]) / 9.0)
+        a = _box1d(a, axis=0)
+        a = _box1d(a, axis=1)
     return a
+
+
+# 每帧重建这两样是纯浪费：暗角的 mgrid 与扫描线掩膜只取决于尺寸与参数。
+_vig_cache: dict = {}
+_scan_cache: dict = {}
+
+
+def _vignette_fall(h: int, w: int):
+    v = _vig_cache.get((h, w))
+    if v is None:
+        Y, X = np.mgrid[0:h, 0:w]
+        nx = (X + 0.5) / w * 2 - 1
+        ny = (Y + 0.5) / h * 2 - 1
+        r = np.sqrt(nx * nx + ny * ny) / math.sqrt(2.0)
+        v = (1.0 - 0.35 * np.clip((r - 0.55) / 0.45, 0, 1) ** 2).astype(np.float32)
+        _vig_cache[(h, w)] = v
+    return v
+
+
+def _scan_mask(h: int, gap: int, al: float):
+    key = (h, gap, al)
+    m = _scan_cache.get(key)
+    if m is None:
+        m = np.ones(h, dtype=np.float32)
+        m[np.arange(h) % gap == (gap // 2)] = 1.0 - al
+        _scan_cache[key] = m
+    return m
 
 
 def apply_fx(arr, fx: dict, seed: int):
@@ -238,10 +289,20 @@ def apply_fx(arr, fx: dict, seed: int):
     a = arr.astype(np.float32, copy=True)
 
     if fx.get("bloom"):
+        # 与 Chrome 引擎同一条思路：辉光是低频信息，**在 1/4 分辨率上做模糊**，
+        # 再放回全图 —— 全分辨率模糊实测 ~48ms/帧，1/4 上做约 5ms/帧（≈10×）。
+        # bloomDiv 可在 project.json 的 fx 里调（2=更锐、8=更省）。
         lum = a @ np.array([0.2126, 0.7152, 0.0722], dtype=np.float32)
         thr = float(fx.get("bloomThreshold", 150.0))
         k = np.clip((lum - thr) / max(1e-3, 255.0 - thr), 0, 1)[..., None]
-        glow = _box_blur3(a * k, 2)
+        src = a * k
+        ds = max(1, int(fx.get("bloomDiv", 4)))
+        small = src[::ds, ::ds] if ds > 1 else src          # 跨步抽样，零成本
+        glow_s = _box_blur3(small, 2)
+        if ds > 1:
+            glow = np.repeat(np.repeat(glow_s, ds, 0), ds, 1)[:h, :w]
+        else:
+            glow = glow_s
         a += glow * float(fx.get("bloomAlpha", 0.45))
 
     if fx.get("chroma"):
@@ -255,17 +316,10 @@ def apply_fx(arr, fx: dict, seed: int):
     if fx.get("scanlines"):
         gap = max(2, int(fx.get("scanGap", 3)))
         al = float(fx.get("scanAlpha", 0.12))
-        m = np.ones(h, dtype=np.float32)
-        m[np.arange(h) % gap == (gap // 2)] = 1.0 - al
-        a *= m[:, None, None]
+        a *= _scan_mask(h, gap, al)[:, None, None]
 
     if fx.get("vignette"):
-        Y, X = np.mgrid[0:h, 0:w]
-        nx = (X + 0.5) / w * 2 - 1
-        ny = (Y + 0.5) / h * 2 - 1
-        r = np.sqrt(nx * nx + ny * ny) / math.sqrt(2.0)
-        fall = 1.0 - 0.35 * np.clip((r - 0.55) / 0.45, 0, 1) ** 2
-        a *= fall[..., None]
+        a *= _vignette_fall(h, w)[..., None]
 
     if fx.get("grain"):
         al = float(fx.get("grainAlpha", 0.4))
@@ -379,7 +433,8 @@ def find_ffmpeg(project: Path) -> str:
 def encode_video(project: Path, cfg: dict, out: Path, audio: str | None) -> None:
     ff = find_ffmpeg(project)
     n = n_frames(cfg)
-    pattern = str(frame_path(project, 0)).replace("f%05d.png" % 0, "f%05d.png")
+    sample = frame_path(project, 0)                      # .../frames/f00000.png|jpg
+    pattern = str(sample).replace(sample.name, "f%05d" + sample.suffix)
     args = [ff, "-y", "-loglevel", "error",
             "-framerate", str(cfg["fps"]), "-start_number", "0", "-i", pattern]
     if audio:
@@ -403,16 +458,231 @@ def encode_video(project: Path, cfg: dict, out: Path, audio: str | None) -> None
             log("  " + line.strip())
 
 
+def _stats_of(arr_u16) -> dict:
+    """一帧的 HDR Vivid 动态元数据采样：maxRGB / 均值 / 分位 / 过曝比例。
+    都是 v*257 线性扩到 0..65535 之后的值，落地时按 16 位归一化写进 JSON。"""
+    mx = arr_u16.max(axis=(0, 1)).astype(np.int32)          # [r,g,b] max
+    mean = arr_u16.mean(axis=(0, 1)).astype(np.float32)
+    lum = (arr_u16[..., 0].astype(np.float32) * 0.2126 +
+           arr_u16[..., 1].astype(np.float32) * 0.7152 +
+           arr_u16[..., 2].astype(np.float32) * 0.0722)
+    return {
+        "maxSCL": [int(v) for v in mx],
+        "maxRGB": int(mx.max()),
+        "avg": [round(float(v), 2) for v in mean],
+        "avgLum": round(float(lum.mean()), 2),
+        "p99Lum": round(float(np.percentile(lum, 99)), 2),
+        "brightFrac": round(float((lum > 40000).mean()), 5),   # 高光占比
+    }
+
+
+def render_frame_bytes(project: Path, frame: int, depth: int = 8, stats: bool = False):
+    """内存里渲一帧并直接产出给 ffmpeg 的裸字节 —— **不写盘**（流式输出 / streaming）。
+
+    depth < 10 → rgb24；depth >= 10 → rgb48le（按 v*257 线性扩到 16 位，
+    ffmpeg 再落到 yuv420p10le/12le）。HDR 走这条，因为 8 位 PNG 装不下 10 位。
+    stats=True 时同时返回该帧的 Vivid 元数据采样（用于 --hdr-vivid）。
+    """
+    cfg = load_project(project)
+    mod = load_render_module(project)
+    env = build_env(cfg, frame)
+    try:
+        img = mod.render_at(env["t"], env)
+    except Exception as e:
+        die("render_at(%g) raised: %r" % (env["t"], e))
+    if not isinstance(img, Image.Image):
+        die("render_at(%g) returned %r, expected a PIL.Image" % (env["t"], type(img)))
+    if img.size != (cfg["width"], cfg["height"]):
+        die("render_at(%g) returned %dx%d, expected %dx%d"
+            % (env["t"], img.size[0], img.size[1], cfg["width"], cfg["height"]))
+    fx = cfg.get("fx") or {}
+    if fx:
+        arr = apply_fx(np.asarray(img.convert("RGB")).astype(np.float32), fx, frame)
+        img = Image.fromarray(arr.astype(np.uint8), "RGB")
+    arr = np.asarray(img.convert("RGB"))
+    st = _stats_of(arr.astype(np.uint16)) if stats else None
+    if depth >= 10:
+        u16 = arr.astype(np.uint16)
+        u16 = (u16 << 8) | u16          # v * 257：0..255 → 0..65535 线性，无带状误差
+        data = np.ascontiguousarray(u16).astype("<u2").tobytes()
+    else:
+        data = np.ascontiguousarray(arr).tobytes()
+    return (data, st) if stats else data
+
+
+def _bytes_worker(project_str: str, frame: int, depth: int, stats: bool = False):
+    return render_frame_bytes(Path(project_str), frame, depth, stats)
+
+
+def render_video_stream(project: Path, out: Path, audio: str | None, workers: int,
+                        depth: int, hdr10: bool, vivid: bool = False,
+                        vivid_every: int = 6) -> None:
+    """流式输出：帧渲染出来直接管道进 ffmpeg，**一帧都不落盘**。
+
+    省的是什么：4K120 一次渲下来帧缓存实测 17–18 GB；流式把它降到 0。
+    换来的是什么（诚实的取舍）：没有帧缓存 = **不能断点续渲**，重编码必须重渲。
+    走 --stream 时请把它当成「一遍过」的交付 pass。
+
+    vivid=True：边管道边算 **HDR Vivid 动态元数据**，写出 <out>.hdrvivid.json。
+    基底层仍是合规的 HDR10 信号（bt2020 + PQ），因为本机 ffmpeg 没有 CUVA/Vivid
+    编码器——动态元数据以 sidecar 形式交付，下游用支持 Vivid 的编码器合入 SEI。
+    """
+    if vivid:
+        depth = max(depth, 10)
+        hdr10 = True
+    cfg = load_project(project)
+    n = n_frames(cfg)
+    w, h, fps = cfg["width"], cfg["height"], cfg["fps"]
+    ff = find_ffmpeg(project)
+    pix_in = "rgb48le" if depth >= 10 else "rgb24"
+
+    args = [ff, "-y", "-loglevel", "error",
+            "-f", "rawvideo", "-pix_fmt", pix_in,
+            "-s", "%dx%d" % (w, h), "-r", str(fps), "-i", "-"]
+    if audio:
+        args += ["-i", audio, "-map", "0:v:0", "-map", "1:a:0"]
+    if depth >= 10:
+        # 10/12-bit：BT.709 SDR 源 → BT.2020 + PQ（HDR10 的传输特性）
+        if hdr10:
+            args += ["-vf",
+                     "zscale=matrixin=bt470bg:primariesin=bt709:transferin=bt709:rangein=full:"
+                     "p=bt2020:t=smpte2084:m=bt2020nc:r=tv:npl=100,format=yuv420p%dle" % min(depth, 12)]
+            args += ["-color_primaries", "bt2020", "-color_trc", "smpte2084",
+                     "-colorspace", "bt2020nc"]
+        else:
+            args += ["-pix_fmt", "yuv420p%dle" % min(depth, 12)]
+        # 10 位走 libx265（QSV/AV1 位深上限受本机构建与设备约束，软件 x265 保位深）
+        args += ["-c:v", "libx265", "-crf", "18", "-preset", "medium", "-tag:v", "hvc1"]
+    else:
+        args += ["-c:v", "libx264", "-preset", "medium", "-crf", "17",
+                 "-pix_fmt", "yuv420p",
+                 "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2"]
+    if audio:
+        args += ["-c:a", "aac", "-b:a", "192k", "-shortest"]
+    args += ["-frames:v", str(n), "-movflags", "+faststart", str(out)]
+    out.parent.mkdir(parents=True, exist_ok=True)
+
+    eff = max(1, min(workers, math.ceil(n / 16) if n else 1))
+    log("streaming: %d frames %dx%d@%d -> %s (no frame cache, depth=%d%s%s)"
+        % (n, w, h, fps, out.name, depth, ", HDR10" if hdr10 else "",
+           ", vivid-meta" if vivid else ""))
+    if eff != workers:
+        log("workers: %d -> %d (only %d frames)" % (workers, eff, n))
+
+    segs: list = []          # Vivid 逐段采样
+    changes: list = []       # 场景切换帧号
+    prev_avg = None
+    sample_every = max(1, int(vivid_every))
+
+    def note(i: int, st):
+        nonlocal prev_avg
+        if not st:
+            return
+        a = st["avgLum"]
+        if prev_avg is not None and abs(a - prev_avg) > 0.12 * 65535:
+            changes.append(i)
+        prev_avg = a
+        if i % sample_every == 0:
+            segs.append({
+                "frame": i,
+                "timeMs": round(i / fps * 1000, 3),
+                "maxSCL": st["maxSCL"],
+                "maxRGB": st["maxRGB"],
+                "avg": st["avg"],
+                "avgLum": st["avgLum"],
+                "p99Lum": st["p99Lum"],
+                "brightFrac": st["brightFrac"],
+            })
+
+    t0 = time.time()
+    proc = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
+                            stderr=subprocess.PIPE)
+    try:
+        if eff == 1:
+            for i in range(n):
+                data = render_frame_bytes(project, i, depth, vivid)
+                if vivid:
+                    data, st = data
+                    note(i, st)
+                proc.stdin.write(data)
+                if (i + 1) % 60 == 0 or i + 1 == n:
+                    log("  %d/%d frames" % (i + 1, n))
+        else:
+            from concurrent.futures import ProcessPoolExecutor
+            from collections import deque
+            pstr = str(project)
+            window = eff + 2          # 有界窗口：内存里最多 eff+2 帧（4K rgb48 约 50MB/帧）
+            with ProcessPoolExecutor(max_workers=eff) as pool:
+                pending = deque()
+                nxt = 0
+                for done in range(n):
+                    while nxt < n and len(pending) < window:
+                        pending.append(pool.submit(_bytes_worker, pstr, nxt, depth, vivid))
+                        nxt += 1
+                    data = pending.popleft().result()
+                    if vivid:
+                        data, st = data
+                        note(done, st)
+                    proc.stdin.write(data)
+                    if (done + 1) % 60 == 0 or done + 1 == n:
+                        log("  %d/%d frames" % (done + 1, n))
+    finally:
+        try:
+            proc.stdin.close()
+        except Exception:
+            pass
+        err = proc.stderr.read().decode("utf-8", "replace") if proc.stderr else ""
+        rc = proc.wait()
+    if rc != 0:
+        die("ffmpeg failed:\n" + "\n".join(err.strip().splitlines()[-8:]))
+    dt = time.time() - t0
+    log("streamed+encoded in %.1fs (%.0f ms/frame, frames on disk: 0)"
+        % (dt, dt * 1000 / max(1, n)))
+    _verify_out(ff, out)
+
+    if vivid:
+        meta = {
+            "standard": "HDR Vivid (T/UWA 005)",
+            "video": out.name,
+            "width": w, "height": h, "fps": fps, "frames": n,
+            "color": {"primaries": "bt2020", "transfer": "smpte2084", "matrix": "bt2020nc"},
+            "encodingNote": ("base layer is a compliant HDR10 signal; this sidecar carries the "
+                             "dynamic metadata. ffmpeg-static has no CUVA/HDR-Vivid SEI encoder, "
+                             "so pair it with a Vivid-capable encoder downstream."),
+            "sampleEveryFrames": sample_every,
+            "targetPeakNits": 1000,
+            "sceneChanges": changes,
+            "segments": segs,
+        }
+        meta_path = Path(str(out) + ".hdrvivid.json")
+        meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=1), "utf-8")
+        log("hdr vivid meta: %s (%d segments, %d scene changes)"
+            % (meta_path.name, len(segs), len(changes)))
+
+
+def _verify_out(ff: str, out: Path) -> None:
+    chk = subprocess.run([ff, "-hide_banner", "-i", str(out)], capture_output=True, text=True)
+    for line in (chk.stderr or "").splitlines():
+        if "Duration" in line or "Stream #" in line:
+            log("  " + line.strip())
+
+
 def render_video(project: Path, out: Path, audio: str | None,
                  workers: int, force: bool) -> None:
     cfg = load_project(project)
     n = n_frames(cfg)
+    # 小片子开大并行是**负优化**：进程启动与 import 比渲一帧还贵。
+    # 每个 worker 至少领 16 帧，才摊得平启动成本（实测 60 帧开 8 进程反而更慢）。
+    eff = max(1, min(workers, math.ceil(n / 16) if n else 1))
+    if eff != workers:
+        log("workers: %d -> %d (only %d frames; startup would dominate)"
+            % (workers, eff, n))
     t0 = time.time()
     rendered = cached = 0
-    if workers > 1:
+    if eff > 1:
         from concurrent.futures import ProcessPoolExecutor
         pstr = str(project)
-        with ProcessPoolExecutor(max_workers=workers) as pool:
+        with ProcessPoolExecutor(max_workers=eff) as pool:
             futures = [pool.submit(_worker, pstr, fi, force) for fi in range(n)]
             done = 0
             for fut in futures:
@@ -752,6 +1022,24 @@ def main() -> None:
     ap.add_argument("--out", help="output mp4 (or contact sheet path with --contact)")
     ap.add_argument("--audio", help="audio file to mux with -shortest")
     ap.add_argument("--workers", type=int, default=1, help="parallel render processes")
+    ap.add_argument("--ss", type=int,
+                    help="超采样倍数 override：默认 project.json 的 supersample（2）；"
+                         "终渲用 3 或 4 换更干净的边缘（换档会强制重渲，不复用旧档缓存）")
+    ap.add_argument("--stream", action="store_true",
+                    help="流式输出：帧直管道给 ffmpeg，frames/ 一个字节都不写（省盘；"
+                         "代价是没有帧缓存 = 不能断点续渲）")
+    ap.add_argument("--depth", type=int, default=8, help="输出位深 8|10|12（10/12 自动走流式）")
+    ap.add_argument("--hdr10", action="store_true", help="10/12-bit 时按 HDR10 打标（BT.2020 + PQ）")
+    ap.add_argument("--hdr-vivid", action="store_true",
+                    help="HDR Vivid (T/UWA 005)：自动升到 10-bit + HDR10 基底，"
+                         "边渲边算动态元数据并写出 <out>.hdrvivid.json（本机 ffmpeg 无 CUVA "
+                         "编码器，SEI 由下游支持 Vivid 的编码器合入）")
+    ap.add_argument("--w", type=int, help="宽度 override（hi-res 支持）")
+    ap.add_argument("--h", type=int, dest="height", help="高度 override（hi-res 支持）")
+    ap.add_argument("--fps", type=int, help="帧率 override（4K120 用 120）")
+    ap.add_argument("--duration", type=float, help="时长秒数 override")
+    ap.add_argument("--format", choices=["png", "jpeg", "jpg"], default=None,
+                    help="帧容器：png（无损）| jpeg（hi-res 下比 PNG 快约 3 倍）")
     ap.add_argument("--list-presets", action="store_true")
     args = ap.parse_args()
 
@@ -765,18 +1053,57 @@ def main() -> None:
         ap.error("--project=<dir> (or --init=<dir>, --list-presets)")
     project = Path(args.project).resolve()
     cfg = load_project(project)
+    force = args.force
+    if args.w: cfg["width"] = int(args.w)
+    if args.height: cfg["height"] = int(args.height)
+    if args.fps: cfg["fps"] = int(args.fps)
+    if args.duration: cfg["duration"] = float(args.duration)
+    if args.format: cfg["frameFormat"] = "jpeg" if args.format == "jpg" else args.format
+    ss_now = int(cfg.get("supersample", 2))
+    if args.ss:
+        want = max(1, int(args.ss))
+        if ss_now != want:
+            log("supersample %s -> %d (requested)" % (ss_now, want))
+        ss_now = want
+        cfg["supersample"] = ss_now
+    # 渲染档位指纹：尺寸/帧率/时长/超采样/帧容器一旦变，帧缓存就不能复用
+    # （这些是 CLI 覆盖，不在 project.json 的签名里，必须自己记一笔）。
+    stamp = "w%d-h%d-f%d-d%g-ss%d-%s" % (
+        cfg["width"], cfg["height"], cfg["fps"], cfg["duration"], ss_now,
+        str(cfg.get("frameFormat", "png")))
+    marker = project / "frames" / ".renderpass"
+    try:
+        prev = marker.read_text().strip() if marker.exists() else None
+    except Exception:
+        prev = None
+    if prev is not None and prev != stamp:
+        log("render pass %s -> %s: cache belongs to another pass, forcing re-render"
+            % (prev, stamp))
+        force = True
     ensure_signature(project)
+    try:
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text(stamp, "utf-8")
+    except Exception:
+        pass
+    depth = max(8, int(args.depth))
+    if args.hdr_vivid:
+        depth = max(depth, 10)
 
     if args.contact:
         out = _out_path(project, args.out) if args.out else None
-        contact_sheet(project, args.keys, out, args.force)
+        contact_sheet(project, args.keys, out, force)
         return
     if args.stills:
         export_stills(project, [float(x) for x in args.stills.split(",") if x.strip()],
-                      args.force)
+                      force)
         return
     out = _out_path(project, args.out) if args.out else (project / "out" / "video.mp4")
-    render_video(project, out, args.audio, max(1, args.workers), args.force)
+    if args.stream or depth >= 10 or args.hdr_vivid:
+        render_video_stream(project, out, args.audio, max(1, args.workers), depth,
+                            args.hdr10, vivid=args.hdr_vivid)
+        return
+    render_video(project, out, args.audio, max(1, args.workers), force)
 
 
 if __name__ == "__main__":

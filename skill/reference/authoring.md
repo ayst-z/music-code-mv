@@ -263,13 +263,13 @@ encoded: <workspace>\test-workdir\authoring-np\out\draft.mp4
   Duration: 00:00:20.00, ...  Stream #0:0 ... h264 (High) ... 640x360 ... 30 fps
 ```
 
-**三个只有 NumPy 引擎才有的坑（都实测复现过）：**
+**三个实测过的坑：**
 
-1. **预设的 `fx` 不会被套用。** `render-np.py --init --preset=` 只取 `palette` 与 `duration`（外加分镜与占位歌词），**丢掉 `fx` 和 `three`**，于是脚手架默认的 `bloom: true` 留在浅色预设上——`claude` / `ink-paper` 这类象牙白底会整屏过曝，联系表看起来像白纸。修法：把预设 `fx` 手工抄进 `project.json`，或至少设 `"bloom": false`（改完引擎会打印 `signature changed: cleared N cached frames`，自动清缓存）。
+1. **浅色底 + `bloom` = 整屏过曝（可复现）。** 脚手架现在会把预设的 `fx` / `three` / `segments` 一起写进 `project.json`（实测 `--init --preset=claude` → `"bloom": false`），新工程直接出图就是干净的；但只要 `fx.bloom` 仍是 `true`，象牙白底（`claude`、`ink-paper`）就会被辉光刷成白纸——12 格联系表几乎全白，只剩一点朱砂线。改 `project.json` 后引擎会打印 `signature changed: cleared N cached frames` 自动清缓存，重出一张联系表即可对照。
 2. **`--audio=` 按进程 CWD 解析**（`--out=` 才是相对工程目录）。从工作区根目录跑就要写全路径：`--audio=test-workdir/my-mv-np/track.wav`。写成 `--audio=track.wav` 会得到 `Error opening input file track.wav`。
 3. **`--contact` / `--stills` 没有 `--w --h --fps --dur` 覆盖**（Chrome 引擎有），尺寸只由 `project.json` 决定。
 
-1. **The NumPy scaffold ignores the preset's `fx`** (and `three`), so light presets blow out — copy the preset `fx` into `project.json`, at minimum `"bloom": false`.
+1. **Light background + `bloom` = a blown-out frame (reproducible).** The scaffold now writes the preset's `fx`, `three` and `segments` into `project.json` (verified: `--init --preset=claude` gives `"bloom": false`), so a fresh project renders clean; but while `fx.bloom` is `true` on an ivory background the glow washes the whole sheet to white. Editing `project.json` makes the engine print `signature changed: cleared N cached frames`, so re-render the sheet to compare.
 2. **`--audio=` resolves against the process CWD**, while `--out=` resolves against the project — give a full relative path from where you launch the command.
 3. **No `--w --h --fps --dur` overrides** on the NumPy engine; size comes from `project.json`.
 
@@ -362,7 +362,7 @@ node skills/music-code-mv/scripts/render.mjs --project=my-mv --contact --w=480 -
 本页两张实拍对照：
 
 - `neon-rain`（Chrome 引擎，480×270）：12 格都有事件（开机日志、歌词、粒子、等距堆叠、数据图），暗底亮字，可读——这就是「合格」的样子。
-- `claude`（NumPy 引擎，未关 bloom）：12 格接近全白，只剩一点朱砂线——这就是「预设 `fx` 没套上」的典型症状，见 3.1。
+- `claude`（NumPy 引擎，把 `fx.bloom` 手动改回 `true` 后重出）：12 格接近全白，只剩一点朱砂线——浅色底开辉光的典型症状，见 3.1。脚手架本身已经会套预设的 `fx`，这样复现得自己把 `bloom` 打开。
 
 Six things to check, in order: empty shots, type legibility, motion arc across the twelve keys, blow-out, contrast/vignette, and whether style changes land on the storyboard's shot boundaries. Look, fix, re-render — the sheet costs seconds.
 

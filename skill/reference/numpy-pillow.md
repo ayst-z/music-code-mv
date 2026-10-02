@@ -63,9 +63,9 @@ python scripts/render-np.py --project=my-mv-np --out=out/video.mp4 --workers=8  
 
 `--preset=` 接 `presets/*.json`（与 Chrome 引擎同一批预设：`claude`、`deepseek`、`gpt`、`neon-rain`…）。`--out=` 成功后自动打印核验行：`Duration` 与视频流（编码/像素格式/分辨率/帧率）。改完预设跑配色纪律测试：`python scripts/audit-presets.py`（R1–R4 四条规则加 `three.roles` 结构检查，exit 1 即有违规）。
 
-**路径解析的不对称（实测）：** `--out=` 相对**工程目录**，`--audio=` 相对**进程当前目录**；从别处启动就要给 `--audio=` 全路径，否则 ffmpeg 报 `Error opening input file`。本引擎也**没有** `--w/--h/--fps/--dur` 覆盖，尺寸只由 `project.json` 决定。本引擎没有 `--gl/--encoder/--depth` 这些 Chrome 引擎的开关，编码固定 `libx264 -preset medium -crf 17`。
+**路径解析的不对称（实测）：** `--out=` 相对**工程目录**，`--audio=` 相对**进程当前目录**；从别处启动就要给 `--audio=` 全路径，否则 ffmpeg 报 `Error opening input file`。本引擎也**没有** `--w/--h/--fps/--dur` 覆盖，尺寸只由 `project.json` 决定。本引擎没有 `--gl/--encoder/--depth` 这些 Chrome 引擎的开关，编码固定 `libx264 -preset medium -crf 17`。预设的 `palette`/`fx`/`duration`/分镜/歌词**本引擎同样会套**（实测 `--init --preset=claude` 写出 `"bloom": false`），另外还会写 `three` 与 `segments`，`segments` 由引擎自己消费。
 
-**And the scaffold applies only `palette`/`duration` (+ storyboard and lyrics) from a preset** — copy `fx` into `project.json` yourself, or light presets blow out under the default `bloom: true`.
+**Path resolution is asymmetric (measured):** `--out=` resolves against the **project**, `--audio=` against the **process CWD** — give a full path for `--audio=` or ffmpeg reports `Error opening input file`. There are no `--w/--h/--fps/--dur` overrides (size comes from `project.json`), none of the Chrome engine's `--gl/--encoder/--depth` flags, and encoding is fixed at `libx264 -preset medium -crf 17`. A preset's `palette`, `fx`, `duration`, storyboard and lyrics **are applied by this engine too** (verified: `--init --preset=claude` writes `"bloom": false`); it additionally writes `three` and `segments` and consumes `segments` itself.
 
 ## 确定性 (Determinism)
 
@@ -101,6 +101,35 @@ At startup the engine hashes `project.json` + `src/render.py` into `frames/.sign
 project.json 的 `fx` 块（与 Chrome 引擎同构）由引擎在 `render_at` 返回之后**统一施加**，全部 NumPy 向量化：`bloom`（亮度阈值提亮 + 两次 3×3 盒式模糊，加法混合）→ `chroma`（R/B 通道反向平移后按 `chromaAlpha` 混合）→ `scanlines`（每 `scanGap` 行乘性压暗 `scanAlpha`）→ `vignette`（径向渐晕，边缘最深 35%）→ `grain`（按 frame 播种的高斯颗粒，`grainAlpha` 控制幅度）。顺序固定；场景代码**不再自己做后期**；`fx` 缺省/为空对象则整条通道跳过。脚手架默认开 `bloom + vignette + grain`，与模板舞台配套。
 
 The `fx` block is applied after `render_at` in a fixed chain — bloom, chroma, scanlines, vignette, seeded grain — all vectorised NumPy. Scenes never implement post themselves; an empty `fx` skips the chain. The scaffold enables bloom + vignette + grain by default.
+
+## 流式输出 · hi-res · HDR (Streaming, hi-res and HDR)
+
+**流式输出 / streaming —— 省硬盘。** `--stream` 把帧渲染出来后**直接管道给 ffmpeg**，`frames/` 一个字节都不写（4K120 一次渲的帧缓存实测 17–18 GB → 0）。代价是诚实的：**没有帧缓存 = 不能断点续渲**，重编码必须重渲——把 `--stream` 当成「一遍过」的交付 pass，迭代期仍然用带缓存的常规路径。
+
+```bash
+python scripts/render-np.py --project=demo --out=out/v.mp4 --stream --workers=8
+```
+
+**hi-res 支持**：`--w --h --fps --duration --format=png|jpeg` 全部可覆盖 `project.json`（4K120 就是 `--w=3840 --h=2160 --fps=120`）。**换档会自动强制重渲**：引擎在 `frames/.renderpass` 记一份「渲染档位指纹」（尺寸/帧率/时长/超采样/帧容器），与当前不符就拒绝复用旧帧——否则 CLI 覆盖会拿到上一档的缓存。hi-res 下帧容器用 `--format=jpeg`（quality 92、4:4:4）比 PNG 快约 3 倍；PNG 的 `pngLevel` 只影响写盘速度、不影响画质（PNG 恒无损）。
+
+**HDR10**：`--depth=10|12 --hdr10`。8 位 PNG 装不下 10 位，所以 **HDR 一律走流式**：`render_at` 出 uint8 → `v*257` 线性扩到 16 位 → `rgb48le` 管道 → ffmpeg 落 `yuv420p10le` + BT.2020/PQ 打标 + libx265（`-tag:v hvc1`）。实测输出：`hevc (Main 10) · yuv420p10le (bt2020nc/bt2020/smpte2084)`。
+
+**HDR Vivid (T/UWA 005)**：`--hdr-vivid` 自动升到 10-bit + HDR10 基底，并在流式过程中**逐帧算动态元数据**（每 `sampleEvery=6` 帧采一段：`maxSCL`/`maxRGB`/`avg`/`avgLum`/`p99Lum`/`brightFrac`，附场景切换检测），写出 `<out>.hdrvivid.json`。**必须如实说明**：本机 ffmpeg（gyan essentials 6.1.1）**没有 CUVA/HDR-Vivid SEI 编码器**，所以交付形态是「合规 HDR10 基底 + Vivid 动态元数据 sidecar」，SEI 由下游支持 Vivid 的编码器合入。
+
+**性能预算 / performance budget**（640×360，本机实测，含机器争抢时的基线校准）：
+
+| 阶段 | 优化前 | 优化后 |
+|---|---|---|
+| `apply_fx` 全套 | 76.1 ms | **16.0 ms（−79%）** |
+| bloom 通路 | 61.9 ms | **9.2 ms（−85%）** —— 辉光是低频信息，在 **1/4 分辨率**上模糊再放回（`fx.bloomDiv` 可调） |
+| vignette | 28.7 ms（每帧重建 `mgrid`） | **0.00 ms**（按尺寸缓存） |
+| scanline | 每帧重建掩膜 | **0.00 ms**（按尺寸缓存） |
+| 端到端 60 帧 | 46 ms/帧 | **18 ms/帧（2.6×）** |
+| 4K120 HDR10 流式（240 帧实测） | — | **51 ms/帧，落盘 0 字节** |
+
+**并行的坑**：小片子开大并行是**负优化**（进程启动比渲一帧还贵）。引擎按「每个 worker 至少 16 帧」自动封顶并打印 `workers: 8 -> 4 (only 60 frames)`。
+
+Streaming hands frames straight to ffmpeg so `frames/` stays at zero bytes (17–18 GB saved on a 4K120 pass) at the cost of resumability. `--w --h --fps --duration --format` override the project for hi-res, and a render-pass fingerprint in `frames/.renderpass` refuses to reuse cache from a different pass. HDR (`--depth=10|12 --hdr10`) must stream because 8-bit PNG cannot hold 10 bits: uint8 → `v*257` → `rgb48le` → `yuv420p10le` with BT.2020/PQ tagging. `--hdr-vivid` additionally samples dynamic metadata per frame and writes a `.hdrvivid.json` sidecar — this build of ffmpeg has no CUVA SEI encoder, so the honest deliverable is an HDR10 base layer plus the Vivid sidecar. Measured: `apply_fx` 76→16 ms (bloom at quarter resolution), vignette/scanline cached to zero, end-to-end 46→18 ms/frame, 4K120 HDR10 streaming at 51 ms/frame with zero disk.
 
 ## NumPy 逐像素技法 (Per-pixel techniques)
 
