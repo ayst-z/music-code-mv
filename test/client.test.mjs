@@ -699,6 +699,53 @@ ok('内置中文名表覆盖全部风格 + 取名规则（title 中文段 → �
   mod.__internals.styleLabel('x-new', '新风格 / New Style') === '新风格' &&
   mod.__internals.styleLabel('unknown-id', '') === 'unknown-id',
   Object.keys(mod.__internals.FALLBACK_STYLE_TITLES).length + ' titles');
+// 自定义档 + 横竖屏切换按钮 / custom tier + orientation toggle
+ok('清晰度下拉末尾有「自定义」档（value=custom，中英文案齐）',
+  optsNodes.some((n) => n.type === 'option' && n.props.value === 'custom' &&
+    n.props.children === '自定义') &&
+  typeof calls.dictionaries.dict.zh['popup.tierCustom'] === 'string' &&
+  typeof calls.dictionaries.dict.en['popup.tierCustom'] === 'string',
+  'custom option');
+const orientBtn = optsNodes.find((n) => n.props && n.props['data-orient'] === '1');
+ok('横竖屏切换按钮（⇄，aria/title「横竖屏切换」，标准 button）',
+  !!orientBtn && orientBtn.type === 'button' && orientBtn.props.children === '⇄' &&
+  orientBtn.props['aria-label'] === '横竖屏切换' && orientBtn.props.title === '横竖屏切换' &&
+  typeof orientBtn.props.onClick === 'function',
+  orientBtn ? String(orientBtn.props['aria-label']) : 'missing');
+ok('尺寸解析与对调是纯函数（解析不出返回 null，不猜）',
+  JSON.stringify(mod.__internals.parseDims('高清 1920×1080')) === JSON.stringify({ w: 1920, h: 1080 }) &&
+  mod.__internals.parseDims('没有尺寸') === null &&
+  JSON.stringify(mod.__internals.swapDims({ w: 1080, h: 1920 })) === JSON.stringify({ w: 1920, h: 1080 }) &&
+  mod.__internals.swapDims(null) === null, 'parse + swap');
+ok('对调后能对上内置档就切档（1080×1920 → 竖版），对不上返回 null（落自定义）',
+  mod.__internals.findTierByDims(mod.__internals.FALLBACK_TIERS, { w: 1080, h: 1920 }).id === 'vertical' &&
+  mod.__internals.findTierByDims(mod.__internals.FALLBACK_TIERS, { w: 720, h: 1280 }) === null,
+  'tier match');
+ok('交付分辨率：自定义档带用户宽×高，非法输入不写（不编造）',
+  mod.__internals.resolutionLabel('custom', '', '自定义', '1500', '900') === '自定义 1500×900' &&
+  mod.__internals.resolutionLabel('custom', '', '自定义', 'abc', '900') === '' &&
+  mod.__internals.resolutionLabel('standard', '标准 1280×720', '自定义', '', '') === '标准 1280×720' &&
+  SRC.includes('resolutionLabel(tier, tierTitle(tier)') &&
+  SRC.includes("tierState[1]('custom')"), 'resolution label');
+// 自定义档被选中时出现宽/高数字输入（localStorage 记住上次值）
+store.set('dsh-music-code-mv.kickoff.tier', 'custom');
+store.set('dsh-music-code-mv.kickoff.w', '1500');
+store.set('dsh-music-code-mv.kickoff.h', '900');
+const customTree = mod.__internals.EntryPopup({ t: popupT, ctx: ctx, onClose: function () {} });
+const customNodes = walkAll(customTree);
+const sizeRow = customNodes.find((n) => n.props && n.props['data-custom-size'] === '1');
+const nums = customNodes.filter((n) => n.type === 'input');
+ok('自定义档出现宽/高数字输入（记住上次的 1500×900）',
+  !!sizeRow && nums.length === 2 && nums[0].props.type === 'number' &&
+  String(nums[0].props.value) === '1500' && String(nums[1].props.value) === '900' &&
+  nums[0].props['data-num'] === 'w' && nums[1].props['data-num'] === 'h',
+  nums.map((n) => n.props.value).join('×'));
+store.delete('dsh-music-code-mv.kickoff.tier');
+store.delete('dsh-music-code-mv.kickoff.w');
+store.delete('dsh-music-code-mv.kickoff.h');
+ok('数字输入只有选自定义才出现，且样式与下拉同款对比度',
+  SRC.includes("tier === 'custom'") && SRC.includes("'data-custom-size': '1'") &&
+  SRC.includes("type: 'number'") && SRC.includes('.dshMvNum{'), 'custom inputs wiring');
 const fpsSelect = selects[2];
 const fpsValues = Array.isArray(fpsSelect.props.children) ? fpsSelect.props.children.map((o) => o.props.value) : [];
 ok('帧率第一项是「跟随工程」（没选就不写进提示词，不编造）',
@@ -725,7 +772,8 @@ ok('字典含分条与预设的中英文案（中文优先）',
     'popup.offlinePresets', 'popup.styles', 'popup.stylesPanel', 'popup.noSwatch', 'popup.styleNone',
     'popup.renderStart', 'popup.renderCancel', 'popup.preview', 'popup.previewNone',
     'popup.section.projects', 'popup.hasContact', 'popup.hasVideo',
-    'popup.fullscreen', 'popup.exitFullscreen']
+    'popup.fullscreen', 'popup.exitFullscreen',
+    'popup.tierCustom', 'popup.orientation', 'popup.w', 'popup.h']
     .every((k) => typeof calls.dictionaries.dict.zh[k] === 'string' &&
       typeof calls.dictionaries.dict.en[k] === 'string') &&
   calls.dictionaries.dict.zh['popup.progress'] === '进度' &&
