@@ -612,3 +612,41 @@ fn audit_timeline(t0, t1):                      # 不单调（看一段）
 规矩 4（一镜一件事）就是「不单调」的**时间轴判据**；规矩 5（文字可读）就是「不臃肿」的**排版判据**；「组合搭配」告诉你**怎么换层**，本节告诉你**叠几层、什么时候删层**。三者合起来才是一套完整的构图纪律。
 
 Layering order is fixed — depth, display, subject, motif, type, then finishing FX. Judge bloat on a single frame (one focal point, at most five visible layers, every layer able to state its reason, type always winning contrast) and judge monotony across time (at least one of density/brightness/motion/depth must move within a 3 s window; every shot carries one countable event; the focal *kind* rotates). Rules 4 and 5 are exactly the timeline and typographic forms of these two tests, and 组合搭配 supplies the swap table.
+
+## 节奏与连续动画 (Rhythm and continuous motion)
+
+**节奏要紧凑，画面要一直在动。** 静止帧是这条流水线最容易犯的错：切点松、缓动太长、停留太久——观众会觉得「什么都没发生」。
+
+### 三条硬规则
+
+1. **切在拍子上 (cut on the beat)**：有配乐就按 BPM 切。`music.py` 给出 BPM（默认 104 → 拍 0.577s、小节 2.31s），段落与子镜边界**对齐到拍或半拍**；转场（黑场/闪切）压在重音上——配乐每段头部自带 impact，正好当切点的钉子。
+2. **没有静止帧 (no static holds)**：相邻两帧必须有可见差异。整段停留 ≥0.5s 而无运动 = 违规。空档用**连续量**填：漂移粒子、呼吸辉光、缓慢推进的相机、走秒/进度条。
+3. **缓动短促 (snappy easing)**：入场 `easeOutBack`/`easeOutCubic`，**0.25–0.5s**；出场更快（0.15–0.3s）。1–2s 的长缓动是节奏拖沓的头号原因。
+
+### 量化自检（可直接跑）
+
+```text
+fn audit_rhythm(shots, bpm):
+    beat = 60 / bpm
+    for s in shots:
+        assert abs(round(s.start / (beat/2)) * (beat/2) - s.start) <= 0.06   # 起点对齐半拍
+        assert 1.5 <= s.len <= 5.0                       # 子镜 1.5–5s（段落边界不受此限）
+    for (f_prev, f_cur) in consecutive_rendered_frames:
+        assert mean_abs_diff(f_prev, f_cur) > 0.5         # 连续动画：相邻帧必须有差异
+    for e in entrances:
+        assert e.duration <= 0.5                          # 缓动短促
+```
+
+**帧间差的落地口径**：渲 contact/stills 时顺手取相邻两帧算 `mean |Δ|`；**目标值 >0.5**（灰度均值差），任何一对相邻帧低于它就说明那里卡住了。与「不单调」互补：不单调看**3 秒窗内的轴变化**，连续动画看**每一对相邻帧**。
+
+### 常见病与修法
+
+| 症状 | 病因 | 修法 |
+|---|---|---|
+| 切点不齐、像随手剪的 | 边界不在拍上 | 按 `60/BPM` 取整到半拍；转场压 impact |
+| 有几帧完全不动 | 入场后进入「停留」 | 加连续量（粒子漂移/辉光呼吸/走秒），或把停留改成缓慢推进 |
+| 进场软绵绵 | 缓动 1–2s | 压到 0.25–0.5s，easeOutBack；出场更快 |
+| 信息停太久 | 一个画面讲两件事 | 拆镜，或让第二信息点以**运动**入场（别用淡入淡出混过去） |
+| 配乐在动画面不动 | 音画不同步 | 子镜切点对齐拍点，画面重音与鼓点同时发生 |
+
+Rhythm is measurable: cut on the beat (boundaries snapped to `60/BPM`, transitions landing on the score's impacts), never hold a frame static for more than half a second — consecutive-frame mean|Δ| must stay above 0.5, which pairs with the monotony test (3-second windows) by watching every adjacent pair — and keep entrances at 0.25–0.5 s with exits faster. Long easings are the number-one cause of a sluggish feel.
