@@ -341,41 +341,64 @@ ok('量到锚点就用 fixed 精确定位（否则退回 CSS absolute）',
   popupRoot.props.style === null,
   JSON.stringify(anchoredRoot ? anchoredRoot.props.style : null));
 
-// ---- 专属全屏界面（与对话/轨迹平级）与动画 / fullscreen + motion ----
-const fsStyle = mod.__internals.fullscreenStyle();
-ok('全屏样式占满视口（fixed inset + 100vw/100vh + 去圆角）',
-  fsStyle.position === 'fixed' && fsStyle.top === '0' && fsStyle.left === '0' &&
-  fsStyle.bottom === '0' && fsStyle.width === '100vw' && fsStyle.height === '100vh' &&
-  fsStyle.maxWidth === 'none' && fsStyle.maxHeight === 'none' && fsStyle.borderRadius === '0',
-  JSON.stringify(fsStyle));
+// ---- 展开大窗（与弹层同级切换，不占满屏幕）与动画 / expand + motion ----
+ok('展开大窗尺寸：min(760px, 100vw-32) + max-height 76vh（不出视口、不覆盖整屏）',
+  SRC.includes('.dshMvPopupBig{width:min(760px, calc(100vw - 32px));') &&
+  SRC.includes('max-height:min(76vh, calc(100vh - 140px))') &&
+  !SRC.includes('fullscreenStyle') && !SRC.includes("borderRadius: '0'"),
+  'big window sizing, no viewport takeover');
+const bigAnchor = mod.__internals.popupAnchor({ bottom: 100, right: 200 }, 1200, 800, 760);
+ok('大窗档位重算锚点：760 宽时左缘也不出屏（右缘收到 432px）',
+  bigAnchor.right === (1200 - 760 - 8) + 'px', JSON.stringify(bigAnchor));
 store.set('dsh-music-code-mv.fullscreen', '1');
-const fsTree = mod.__internals.EntryPopup({ t: popupT, ctx: ctx, onClose: function () {} });
+const fsTree = mod.__internals.EntryPopup({
+  t: popupT, ctx: ctx, anchor: { top: '105px', right: '400px' }, onClose: function () {}
+});
 const fsNodes = walkAll(fsTree);
 const fsRoot = fsNodes.find((n) => n.props && n.props['data-music-mv-popup'] === '1');
 const fsBtn = fsNodes.find((n) => n.props && n.props['data-fs'] === '1');
-ok('全屏偏好记住：重开直接是全屏界面（类 + 占满样式 + 开关 aria-pressed）',
-  !!fsRoot && String(fsRoot.props.className).indexOf('dshMvPopupFs') >= 0 &&
+ok('记住展开偏好：重开就是大窗（类 dshMvPopupBig + **同一锚点** fixed + 开关「收起」）',
+  !!fsRoot && String(fsRoot.props.className).indexOf('dshMvPopupBig') >= 0 &&
   !!fsRoot.props.style && fsRoot.props.style.position === 'fixed' &&
-  fsRoot.props.style.width === '100vw' &&
-  !!fsBtn && fsBtn.props['aria-pressed'] === true && fsBtn.props.children === '退出全屏',
+  fsRoot.props.style.top === '105px' && fsRoot.props.style.right === '400px' &&
+  !!fsBtn && fsBtn.props['aria-pressed'] === true && fsBtn.props.children === '收起',
   fsBtn ? String(fsBtn.props.children) : 'missing');
 store.delete('dsh-music-code-mv.fullscreen');
-ok('全屏开关在默认态文案「全屏」、aria-pressed=false（可键盘操作）',
+ok('默认态开关文案「展开」、aria-pressed=false（可键盘操作）',
   popupNodes.some((n) => n.props && n.props['data-fs'] === '1' &&
-    n.props.children === '全屏' && n.props['aria-pressed'] === false &&
+    n.props.children === '展开' && n.props['aria-pressed'] === false &&
     typeof n.props.onClick === 'function'), 'toggle present');
-ok('Esc 在全屏时先退全屏、再按一次才关弹层',
-  SRC.includes('if (fsRef.current)') && SRC.includes("lsSet(LS_FS, '0')"), 'esc order');
-ok('动画：开屏 / 切级 / 全屏 / 遮罩四段关键帧 + 悬停过渡 + 尊重减少动效',
+const toggled = [];
+const controlledTree = mod.__internals.EntryPopup({
+  t: popupT, ctx: ctx, expanded: true,
+  onToggleExpanded: function (v) { toggled.push(v); }, onClose: function () {}
+});
+const ctrlBtn = walkAll(controlledTree).find((n) => n.props && n.props['data-fs'] === '1');
+if (ctrlBtn && typeof ctrlBtn.props.onClick === 'function') ctrlBtn.props.onClick();
+ok('受控切换：点开关通知父级收起并持久化偏好（父级按档位重量锚点）',
+  toggled.length === 1 && toggled[0] === false &&
+  store.get('dsh-music-code-mv.fullscreen') === '0' &&
+  SRC.includes('measure(next ? EXPANDED_WIDTH : POPUP_WIDTH)'),
+  JSON.stringify(toggled));
+store.delete('dsh-music-code-mv.fullscreen');
+ok('Esc 在大窗时先收起、再按一次才关弹层',
+  SRC.includes('if (bigRef.current)') && SRC.includes("lsSet(LS_FS, '0')"), 'esc order');
+ok('动画：开屏 / 切级 / 大窗 / 遮罩四段关键帧 + 悬停过渡 + 尊重减少动效',
   SRC.includes('@keyframes dshMvPop') && SRC.includes('@keyframes dshMvPanel') &&
-  SRC.includes('@keyframes dshMvFs') && SRC.includes('@keyframes dshMvFade') &&
+  SRC.includes('@keyframes dshMvBig') && SRC.includes('@keyframes dshMvFade') &&
   SRC.includes('prefers-reduced-motion') && SRC.includes('transition:background .12s ease'),
   'motion + reduced-motion');
 ok('切级时主体重挂播放滑入动画（body key 跟面板走）',
   SRC.includes("key: 'body-' + panel"), 'panel remount');
-ok('全屏宽屏两栏排版 + 画廊升到 3/4 列（容器查询）',
+ok('大窗宽屏两栏排版 + 画廊升到 3/4 列（容器查询）',
   SRC.includes('@container (min-width: 560px)') && SRC.includes('@container (min-width: 860px)') &&
-  SRC.includes('.dshMvPopupFs .dshMvBody{display:grid'), 'responsive fullscreen grid');
+  SRC.includes('.dshMvPopupBig .dshMvBody{display:grid'), 'responsive big grid');
+ok('图片可读性：大窗展示图 112px / 风格条 96px / 缩略 88×50 / 预览整幅 contain；常态 56px 起步',
+  SRC.includes('.dshMvPopupBig .dshMvCardArt,.dshMvPopupBig .dshMvCardImg{height:112px;}') &&
+  SRC.includes('.dshMvPopupBig .dshMvStrip{height:96px;}') &&
+  SRC.includes('.dshMvPopupBig .dshMvThumb{width:88px;height:50px;}') &&
+  SRC.includes('max-height:52vh;object-fit:contain') &&
+  SRC.includes('.dshMvCardArt{display:block;height:56px;'), 'readable images');
 ok('选项框对比度：实底背景 + 加粗边框 + option 同色 + 字段标签/分区标题提亮',
   SRC.includes('background:var(--dsw-alias-bg-layer-2, rgba(148,163,184,.22))') &&
   SRC.includes('border:1px solid var(--dsw-alias-border-l3') &&

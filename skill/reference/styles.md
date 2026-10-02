@@ -226,6 +226,52 @@ Every display has a few physical traits without which it stops reading as that d
 **Two rules for all of them:** a display is *one layer*, placed under motifs and typography, one per segment; and switching displays is switching eras — cut on a section boundary through black or an e-ink refresh flash.
 
 
+### 显示器伪代码 (Display pseudocode)
+
+一种写法覆盖 T13–T24：内容先渲到离屏层，再套上那种管子的物理特征；换显示器是**分段级事件**。
+
+```text
+# 一个段落只用一种显示器，叠在母题与排版**下面** / one display per segment, under everything
+fn draw_display(kind, t, draw_content):
+    content = render_offscreen(draw_content)      # 内容层：字、图形、母题
+    screen  = era_optics(kind, content, t)        # 该种屏幕的物理特征
+    blit(screen); draw_motifs(); draw_type()      # 母题与排版永远在显示器之上
+
+fn era_optics(kind, img, t):
+    match kind:
+      case T13 CRT:
+          img = barrel(img, 0.10..0.22)                   # 广角畸变：竖线弯成桶形
+          img = beam_blur(img, r=1..2.5)                  # 束斑模糊（粒子模糊）
+          img = mask(img, triad | grille + 一根阻尼线)      # 荫罩/光栅条
+          img *= scanlines(brightness_driven)             # 乘性压暗，**不画黑条**
+          for g in {0.08,0.16,0.24}: ghost += a_g * at(t-g)   # 余辉：只采样，不读上一帧
+          if power_on(t):  img = unfold_line_to_picture(t)   # 开机：亮线纵向展开
+          if power_off(t): img = collapse_to_dot(t)         # 关机：塌成线再缩成点（M17）
+          if degauss(t):   img = chroma_pulse ×2             # 消磁：色纯抖两下
+      case T14 VECTOR:   strokes_only(img); 禁扫描线; ghost = draw(path, t-g) × α^g
+      case T15 VFD:      seg = glyph_table(text); overlay mesh_grid(α≈.12); filaments
+      case T16 SEGMENT:  seg = table(text);  **off_segments 留 5% 暗痕**; nixie: z-order 层叠
+      case T17 LED:      cells = downsample(img, cell);
+                         v = round(v*L)/levels + dither     # 不抖动必分层
+                         hot cells += cross flare
+      case T18 LCD:      img *= view_angle(camera_t);       # 视角即明暗
+                         **禁 bloom、禁暗角发光**; ghost at t-g; 固定一个坏点
+      case T19 OLED:     bg = pure_black; **无背光溢出**; 子像素边缘色; 烧录残影
+      case T20 EINK:     if phase < 0.35: invert_flash()    # 刷新闪（也是换管信号）
+                         else: paper_tex + ghost = prev × 0.15; **零发光**
+      case T21 THERMAL:  img = mono(img); band_rows(img, 行抖动); 纸边 + 热度不均
+      case T22 HOLO:     img = additive(img) + scanlines; flicker(0.9..1.0);
+                         dust; falloff = f(距离)
+      case T23 VHS:      chroma_bleed(±3); tracking_bar(y = f(t));
+                         dropouts = hash() < 0.01; head-switch 噪声带(底 4px);
+                         jitter(t); soft_focus(1.5)
+      case T24 SPLITFLAP:for col: delay = hash(col) × 0.04..0.09        # 整排不同时到位
+                         flap: scaleY 0→1 + 上暗下亮; 中缝切字; landing 回弹
+
+# 换显示器 = 换时代：贴段落边界，先过一道黑场或刷新闪
+on_segment_boundary: fade_to_black(0.15s) | eink_refresh_flash(); then switch(kind)
+```
+
 ### 选型表 (Choosing a display)
 
 | 段落 / 母题 | 显示器 | 为什么 |

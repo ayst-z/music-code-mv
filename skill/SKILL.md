@@ -173,6 +173,67 @@ node skills/music-code-mv/scripts/render.mjs --project=my-mv --out=out/video.mp4
 
 Frames are reused only when the file exists **and** the render signature is unchanged (width / height / fps / duration / engine / quality + scene `deps`), so changing the resolution always re-renders; `--out`/`--audio`/`--workers` do not. `--force` redoes everything, `--clean` purges `frames/` after encoding.
 
+## 伪代码总纲 (Master pseudocode)
+
+整条流水线压成一段**语言无关**的伪代码：换引擎（Chrome / node+skia / NumPy）只换实现，不换结构。注释里的「禁」是红线。
+
+The whole pipeline as language-agnostic pseudocode — switching engines swaps the implementation, never the structure.
+
+```text
+# 0) 询问：先问再动手 / interview before you build
+ask(purpose_and_ratio, duration, style_preset, lyric_source, audio, delivery)
+   # 每项给推荐 + 理由；拿到答复再写分镜。中途改主意同样过这道门。
+
+# 1) 分镜 = 合同 / storyboard is the contract
+shots = [{id, start, end, what, style, lyric}, ...]     # 每镜 2–6s，只发生**一件可数的事**
+write(storyboard.md, shots)
+assert every shot has an event                         # 没有事件的镜头是 bug
+
+# 2) 脚手架：一条命令拿到骨架 / one-command scaffold
+project = scaffold(preset, duration, fps, size)        # 配色/后期/分镜/占位歌词一并写入
+
+# 3) 每帧是 t 的纯函数 / every frame is a pure function of t
+fn render_at(t):                                       # 禁 rAF、禁墙钟、禁绘制期 Math.random()
+    env = {w, h, fps, palette, segments, project, rnd} # rnd(seed) 只在**建场景**时调用
+    for s in timeline.active(t):                       # 按数组顺序叠加绘制
+        s.draw(stage,
+               local   = t - s.start,                  # 跨镜头的事件用 env.t（全局）
+               env     = env,
+               progress= (t - s.start) / (s.end - s.start))
+    apply_fx(stage, project.fx)                        # bloom→chroma→scanlines→vignette→grain
+    return frame                                       # 尺寸必须 = project.size，模式 RGB
+
+# 4) 帧缓存：签名没变才复用 / cache keyed by a signature
+sig = sha1(project.json + scene_sources + render_pass)
+for frame in range(n_frames):
+    if exists(frame_path) and sig_unchanged and pass_matches: reuse
+    else: write(frame_path, render_at(frame / fps))     # pass = 尺寸/位深/超采样档位
+
+# 5) 并行要有下限 / parallelism needs a floor
+eff = min(requested, ceil(n_frames / 16))               # 每 worker 至少 16 帧
+                                                   # 否则进程启动比渲一帧还贵（负优化）
+map(render_frame, frames, window = eff + 2)             # 有界窗口：内存里最多 eff+2 帧
+
+# 6) 编码：挑**真能用**的硬件编码器 / pick hardware that actually works
+enc = first(id in [qsv, nvenc, amf]                     # 注意：ffmpeg 静态构建常常
+            where has(id) and test_encode(one_frame))   #   编译了却没有那块卡
+     else libx264                                       # 失败就如实降级，不谎报加速
+run(ffmpeg, frames, enc, audio, -shortest, +faststart)
+verify(duration ≈ expected and streams = [video, audio])# 双流与时长必须核对
+
+# 7) 联系表自检：看图 → 修 → 再看 / the contact-sheet loop
+sheet = tile(render_at(t) for t in evenly_spaced(0, duration, keys))
+critique(sheet)      # 构图 / 可读性 / 对比度 / 运动弧线 / 到底有没有事件
+if problem: fix(scene); goto sheet                      # 秒级成本，别省这一步
+
+# 8) 配音：先合成、量时长、再排分镜 / measure before you schedule
+for line in narration:
+    wav[line] = tts(line, voice = preset.persona.voice) # 回环代理，不访问外网
+start[line] = duration(wav[line])                       # 用实测时长，不猜
+track = mix(wav, delays = start_of_shot(line))
+mux(video, track, -shortest)                            # 音画同长
+```
+
 ## 尺寸与时间预算 (Sizing and time budget)
 
 本工作站实测（无头 Chrome，软件渲染）：
