@@ -226,7 +226,7 @@ The host half registers the studio under `/music-mv` on the DSH webServer; the b
 | `GET /music-mv/api/file?path=<rel>` | 预览联系表 / 成片（支持 Range、`download=1`）/ preview or download an artifact |
 | `GET /music-mv/api/text?path=<rel>` | 读 storyboard.md、lyrics.lrc 等文本 / read a text file |
 
-**控制面板 / the control panel**（全新）—— 对话视图环标签页「MV 工坊」：首屏 **hero「一键进入子代理」**主色大按钮 + 四级降级说明 + **当前预设回显**；下面是状态（工作区 / 工程数 / 任务·进度·速度·预计·状态**五条分条**）、预设区（清晰度含**自定义**档、风格 17 档、帧率 6 档、⇄ 横竖屏）与钉底三动作（渲染联系表 / 风格画廊 / 复制路径）：
+**控制面板 / the control panel**（全新）—— 对话视图环标签页「MV 工坊」：首屏 **hero「一键进入子代理」**主色大按钮 + 四级降级说明 + **当前预设回显**；下面依次排开三节：**总览**（状态：工作区 / 工程数 / 任务·进度·速度·预计·状态**五条分条**）、**工程进度**（每个工程一行：缩略图 + 名称规格 + 右侧原生进度条与「61% · 386/630 帧」；正在渲染的行描主色边；算不出就显示「—」**不画假条**——进度口径是「运行中→任务实测 pct，否则→帧缓存覆盖率 frames÷(时长×帧率)」）、**渲染状态**（全局进度条），再加预设区（清晰度含**自定义**档、风格 17 档、帧率 6 档、⇄ 横竖屏）与钉底三动作（渲染联系表 / 风格画廊 / 复制路径）：
 
 ![codeMV control panel](skill/reference/img/panel-codeMV.png)
 

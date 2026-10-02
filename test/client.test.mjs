@@ -364,9 +364,13 @@ ok('动画：开屏 / 切级 / 页面展开三段关键帧 + 悬停过渡 + 尊�
   'motion + reduced-motion');
 ok('切级时主体重挂播放滑入动画（body key 跟面板走）',
   SRC.includes("key: 'body-' + panel"), 'panel remount');
-ok('页面宽屏两栏排版 + 画廊升到 3/4 列（容器查询，dshMvBig）',
+ok('紧凑单列：去掉两栏网格、收紧留白（body/section 全部减距）',
+  !SRC.includes('.dshMvBig .dshMvBody{display:grid') &&
+  SRC.includes('.dshMvBig .dshMvBody{padding:0 14px 14px;gap:8px;font-size:13px;}') &&
+  SRC.includes('.dshMvBig .dshMvSection,.dshMvBig .dshMvPhase{gap:5px;}'), 'compact single column');
+ok('画廊随容器升 3/4 列 + 进度条行宽屏拉长（容器查询）',
   SRC.includes('@container (min-width: 560px)') && SRC.includes('@container (min-width: 860px)') &&
-  SRC.includes('.dshMvBig .dshMvBody{display:grid'), 'responsive grid');
+  SRC.includes('.dshMvBig .dshMvProjProg{flex:0 1 340px;}'), 'responsive');
 ok('图片可读性：页面展示图 112px / 风格条 96px / 缩略 88×50 / 预览整幅 contain；常态 56px 起步',
   SRC.includes('.dshMvBig .dshMvCardArt,.dshMvBig .dshMvCardImg{height:112px;}') &&
   SRC.includes('.dshMvBig .dshMvStrip{height:96px;}') &&
@@ -403,27 +407,30 @@ const readyJob = {
 };
 const readyState = {
   root: '/w/mv',
-  projects: [{
-    name: 'demo', path: 'demo', width: 1280, height: 720, fps: 30, duration: 21, scenes: 6,
-    contact: { path: 'demo/out/contact.png', bytes: 100, mtime: 42 }
-  }],
+  projects: [
+    {
+      name: 'demo', path: 'demo', width: 1280, height: 720, fps: 30, duration: 21, scenes: 6, frames: 386,
+      contact: { path: 'demo/out/contact.png', bytes: 100, mtime: 42 }
+    },
+    { name: 'alpha', path: 'alpha', fps: 24, duration: 30, frames: 720, contact: null, video: null }
+  ],
   job: readyJob
 };
 const readyNodes = walkAll(mod.__internals.popupBody(popupT, 'ready', readyState, retrySpy));
 const sections = readyNodes.filter((n) => n.props && typeof n.props['data-section'] === 'string');
-ok('就绪态分三节：总览 + 工程管理 + 渲染状态',
-  sections.map((n) => n.props['data-section']).join(',') === 'status,projects,render',
+ok('就绪态分三节：总览 + 工程进度 + 渲染状态（依次排开）',
+  sections.map((n) => n.props['data-section']).join(',') === 'status,progress,render',
   sections.map((n) => n.props['data-section']).join(','));
 const overviewRows = readyNodes.filter((n) => n.props && n.props['data-overview-row']);
 ok('总览两行：工作区 + 工程（真实数据，不是占位）',
   overviewRows.map((n) => n.props['data-overview-row']).join(',') === 'workspace,projects' &&
   overviewRows[0].props.children[1].props.children === '/w/mv',
   overviewRows.map((n) => n.props['data-overview-row']).join(','));
-// ---- 工程管理（统一管理界面的列表）----
+// ---- 进度展示面板（所有工程的进度条，依次排开）----
 const projBtns = readyNodes.filter((n) => n.props && n.props['data-project']);
-ok('工程管理：每个工程一行（data-project，点进联系表面板）',
-  projBtns.length === 1 && projBtns[0].props['data-project'] === 'demo' &&
-  projBtns[0].type === 'button',
+ok('进度面板：每个工程一行（data-project，按数据顺序排开，点进联系表面板）',
+  projBtns.length === 2 && projBtns.map((b) => b.props['data-project']).join(',') === 'demo,alpha' &&
+  projBtns.every((b) => b.type === 'button'),
   projBtns.map((b) => b.props['data-project']).join(','));
 const projKids = walkAll(projBtns[0]);
 const projImg = projKids.find((n) => n.type === 'img');
@@ -431,13 +438,43 @@ ok('工程行带联系表缩略图（同源真实渲染产物）',
   !!projImg && projImg.props.src.indexOf('/music-mv/api/file?path=demo%2Fout%2Fcontact.png') === 0,
   projImg ? projImg.props.src.slice(0, 60) : 'missing');
 const projSpec = projKids.find((n) => n.props && String(n.props.className).indexOf('dshMvProjSpec') >= 0);
-ok('工程行显示规格（1280×720 · 30 fps · 21s · 6 场景）',
-  !!projSpec && String(projSpec.props.children) === '1280×720 · 30 fps · 21s · 6 场景',
+ok('规格行合并产物标记（1280×720 · 30 fps · 21s · 6 场景 · 有联系表）',
+  !!projSpec && String(projSpec.props.children) === '1280×720 · 30 fps · 21s · 6 场景 · 有联系表',
   projSpec ? String(projSpec.props.children) : 'missing');
-const projMeta = projKids.find((n) => n.props && String(n.props.className).indexOf('dshMvProjMeta') >= 0);
-ok('工程行标出产物状态（有联系表）',
-  !!projMeta && String(projMeta.props.children) === '有联系表',
-  projMeta ? String(projMeta.props.children) : 'missing');
+const demoBar = projKids.find((n) => n.type === 'progress');
+ok('每个工程一根进度条（帧缓存覆盖率：386 ÷ 630 = 61%）',
+  !!demoBar && demoBar.props.value === 61 && demoBar.props.max === 100 &&
+  demoBar.props['data-project-progress'] === 'demo' &&
+  projKids.some((n) => n.props && String(n.props.children) === '61% · 386/630 帧'),
+  demoBar ? 'value=' + demoBar.props.value : 'missing');
+const alphaBar = walkAll(projBtns[1]).find((n) => n.type === 'progress');
+ok('第二根进度条依次排开（alpha 720 ÷ 720 = 100%）',
+  !!alphaBar && alphaBar.props.value === 100 &&
+  walkAll(projBtns[1]).some((n) => n.props && String(n.props.children) === '100% · 720/720 帧'),
+  alphaBar ? 'value=' + alphaBar.props.value : 'missing');
+// projectProgress 纯函数：实测值优先 / 覆盖率 / 算不出返回 null
+const ppLive = mod.__internals.projectProgress({ path: 'demo', fps: 30, duration: 21, frames: 386 }, {
+  project: 'demo', status: 'running', progress: { pct: 50.4, done: 4560, total: 9120 }
+});
+ok('正在跑的工程用任务实测 pct（live）',
+  !!ppLive && ppLive.live === true && ppLive.pct === 50 && ppLive.total === 9120,
+  JSON.stringify(ppLive));
+ok('没跑的工程算帧缓存覆盖率（630 帧总量）',
+  JSON.stringify(mod.__internals.projectProgress({ path: 'x', fps: 30, duration: 21, frames: 630 }, null)) ===
+  JSON.stringify({ pct: 100, done: 630, total: 630, live: false }), 'coverage');
+ok('缺 fps/时长就算不出 → null（不编造，行里显示「—」）',
+  mod.__internals.projectProgress({ path: 'x', frames: 10 }, null) === null &&
+  mod.__internals.projectProgress(null, null) === null, 'honest null');
+const liveState = Object.assign({}, readyState, {
+  job: { project: 'demo', mode: 'contact', status: 'running', startedAt: Date.now(), progress: { pct: 50, done: 4560, total: 9120 } }
+});
+const liveNodes = walkAll(mod.__internals.popupBody(popupT, 'ready', liveState, retrySpy));
+const liveRow = liveNodes.find((n) => n.props && n.props['data-project'] === 'demo');
+ok('正在渲染的工程行高亮（dshMvProjOn + data-running，条用实测值）',
+  !!liveRow && String(liveRow.props.className).indexOf('dshMvProjOn') >= 0 &&
+  liveRow.props['data-running'] === '1' &&
+  walkAll(liveRow).some((n) => n.type === 'progress' && n.props.value === 50),
+  liveRow ? String(liveRow.props.className) : 'missing');
 const openSpyCalls = [];
 const readyNodes2 = walkAll(mod.__internals.popupBody(popupT, 'ready', readyState, retrySpy,
   function (v) { openSpyCalls.push(v); }));
@@ -448,7 +485,7 @@ ok('点工程行把该工程交给联系表面板（组件里同步选中并跳�
 const readyJobRows = readyNodes.filter((n) => n.props && n.props['data-job-row']);
 ok('渲染状态分条 5 条（任务/进度/速度/预计/状态）', readyJobRows.length === 5,
   readyJobRows.map((n) => n.props['data-job-row']).join(','));
-const readyBar = readyNodes.find((n) => n.type === 'progress');
+const readyBar = readyNodes.find((n) => n.type === 'progress' && n.props && n.props['data-job-progress'] === 50);
 ok('渲染中：原生进度条带真实 value',
   !!readyBar && readyBar.props.value === 50 && readyBar.props['data-job-progress'] === 50 &&
   readyBar.props.max === 100, readyBar ? 'value=' + readyBar.props.value : 'missing');
@@ -714,7 +751,7 @@ ok('字典含分条与预设的中英文案（中文优先）',
     'popup.kickoffOpts', 'popup.tier', 'popup.style', 'popup.fps', 'popup.fpsFollow',
     'popup.offlinePresets', 'popup.styles', 'popup.stylesPanel', 'popup.noSwatch', 'popup.styleNone',
     'popup.renderStart', 'popup.renderCancel', 'popup.preview', 'popup.previewNone',
-    'popup.section.projects', 'popup.hasContact', 'popup.hasVideo',
+    'popup.section.progress', 'popup.hasContact', 'popup.hasVideo',
     'popup.heroStart', 'popup.heroSub', 'popup.heroChips', 'popup.heroNoPresets',
     'popup.tierCustom', 'popup.orientation', 'popup.w', 'popup.h']
     .every((k) => typeof calls.dictionaries.dict.zh[k] === 'string' &&
@@ -722,7 +759,7 @@ ok('字典含分条与预设的中英文案（中文优先）',
   calls.dictionaries.dict.zh['popup.progress'] === '进度' &&
   calls.dictionaries.dict.en['popup.progress'] === 'Progress' &&
   calls.dictionaries.dict.zh['popup.fps'] === '帧率' &&
-  calls.dictionaries.dict.zh['popup.section.projects'] === '工程管理',
+  calls.dictionaries.dict.zh['popup.section.progress'] === '工程进度',
   'zh-first + en mirrored');
 
 const kickExtra = mod.__internals.kickoffExtra('标准 1280×720', 'deepseek');
