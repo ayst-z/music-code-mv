@@ -350,7 +350,7 @@ Requires Node.js, Google Chrome (or Edge) and ffmpeg. In this workspace they are
 ## 参考文档 (Reference)
 
 - `reference/authoring.md` —— **创作对接实操指南**：从空工作区到成片的完整命令序列（逐条实跑）、Chrome vs NumPy 引擎怎么选、预设怎么挑、TTS 配音顺序、联系表怎么读、常见报错与修法
-- `reference/teamwork.md` —— **团队协作参考**：写入范围怎么划（含禁区）、自包含任务消息模板、门禁时序（别在别人写到一半时提交）、派单与接管（二选一通牒）、没有读图能力时的量化验收口径、渲染竞争对基准的污染、什么要交给用户拍板、协作主循环
+- `reference/teamwork.md` —— **团队协作与工作规则**：**分工**（组队判据：写入文件集合不相交；范围与禁区模板；git 由 lead 统一执行）、**讨论**（先交草案+数字预算拿放行，提问带选项与代价，反对要说清风险，放行留痕，草案一改下游全改）、**自审**（交活前七条打勾：门禁真跑过、数字可复算、边界逐条算过、文档与实现一致、残留清零、隐私含图片内容、范围没越界；自报数字要经得起交叉核验）、门禁时序（别在别人写到一半时提交）、派单与接管（二选一通牒）、没有读图能力时的量化验收口径、渲染竞争对基准的污染、什么要交给用户拍板、协作主循环
 - `reference/presets.md` —— 预设三族：四套氛围预设、AI 模型配色预设家族、带 `persona`/`voice` 的角色智能体预设；配色、后期、时长、分镜、占位歌词
 - `reference/styles.md` —— 代码 MV 观感的风格词汇：T1–T27 风格（显示器家族 T13–T24：CRT/矢量屏/VFD/数码管/LED 点阵/LCD/OLED/电子墨水/热敏/全息投影/VHS/机械翻牌；印刷与像素 T25–T27：半调/像素画/数据砸裂）、M1–M17 母题库（从开机到关机的全部视觉元素）、配色逻辑与品牌两色系统、**叠层纪律（六层固定次序 + 「不臃肿」单帧判据与「不单调」时间轴判据 + 两套审计伪代码）**
 - `reference/numpy-pillow.md` —— NumPy + Pillow 逐帧引擎：3D 透视投影、严格栅格与字阶、分段色彩脚本
@@ -360,7 +360,7 @@ Requires Node.js, Google Chrome (or Edge) and ffmpeg. In this workspace they are
 - `reference/environment.md` —— 工具链安装、降级方案、排障
 
 - `reference/authoring.md` — **the authoring playbook**: the full command sequence from an empty workspace to an MP4 (every command run here), choosing the Chrome vs NumPy engine, picking a preset, narration order, reading a contact sheet, real errors and their fixes
-- `reference/teamwork.md` — **working with agent teams**: how to carve write scopes (and their no-go zones), the self-contained task message, gate timing (never commit while someone is mid-edit), delivery and takeovers, quantitative acceptance when you cannot read images, how parallel renders pollute benchmarks, what to escalate to the user, and the collaboration loop
+- `reference/teamwork.md` — **team collaboration and working rules**: **division of labour** (when to team up — disjoint write scopes; the scope/no-go template; the lead alone runs git), **discussion** (ship a draft plus a numeric budget for approval before starting anything expensive; ask with options and costs; raise risks with alternatives; record what was approved and re-cut every downstream artefact when a draft changes), **self-review** (a seven-point check before reporting done: gates actually run, every number recomputable, boundaries computed, docs match the code, no debug residue, privacy including image content, no scope overrun — plus cross-checking teammates' numbers), gate timing (never commit mid-edit), delivery and takeovers, quantitative acceptance when you cannot read images, benchmark contamination, what to escalate, and the collaboration loop
 - `reference/styles.md` — style vocabulary: T1–T27 styles (display family T13–T24: CRT/vector/VFD/segments/LED matrix/LCD/OLED/e-ink/thermal/hologram/VHS/split-flap; print & pixel T25–T27: halftone/pixel art/datamosh), the M1–M17 motif library (every visual element of the boot→shutdown program), colour logic and the brand two-colour system, and the **layering discipline (fixed six-layer stack, a per-frame bloat test and a across-time monotony test, each with audit pseudocode)**
 - `reference/numpy-pillow.md` — the NumPy + Pillow frame engine: 3D perspective projection, strict grid & type scale, segmented color script
 - `reference/techniques.md` — deterministic rendering, Chrome flags, capture, encoding
