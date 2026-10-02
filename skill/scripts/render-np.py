@@ -643,8 +643,8 @@ INIT_STORYBOARD = """# {name} — storyboard（NumPy+Pillow 引擎{preset}）
 
 {summary}
 
-| # | shot id | 发生了什么 / what happens | 风格 | lyric cue |
-|---|---|---|---|---|
+| # | shot id | start–end | 发生了什么 / what happens | 风格 | lyric cue |
+|---|---|---|---|---|---|
 {rows}
 
 ## Palette
@@ -692,15 +692,23 @@ def scaffold(dest: Path, force: bool, preset_id: str | None) -> None:
             cfg["palette"].update(preset["palette"])
         if preset.get("duration"):
             cfg["duration"] = preset["duration"]
+        # 预设的后期与 3D 镜头逻辑必须一起套上 —— 只套 palette 会让浅色预设
+        # （claude / ink-paper）落在脚手架默认的 bloom:true 上，整屏过曝。
+        if isinstance(preset.get("fx"), dict):
+            cfg["fx"].update(preset["fx"])
+        if isinstance(preset.get("three"), dict):
+            cfg["three"] = preset["three"]
+        if isinstance(preset.get("segments"), list):
+            cfg["segments"] = preset["segments"]
     (dest / "src").mkdir(exist_ok=True)
     (dest / "project.json").write_text(json.dumps(cfg, ensure_ascii=False, indent=2) + "\n", "utf-8")
     (dest / "src" / "render.py").write_text(INIT_RENDER, "utf-8")
 
     if preset and isinstance((preset.get("storyboard") or {}).get("shots"), list):
         rows = "\n".join(
-            "| %d | %s | %s | %s | %s | %s |" % (i + 1, s.get("id", ""), s.get("what", ""),
-                                                 s.get("start", ""), s.get("end", ""),
-                                                 s.get("style", ""))
+            "| %d | %s | %s–%s | %s | %s | %s |" % (
+                i + 1, s.get("id", ""), s.get("start", ""), s.get("end", ""),
+                s.get("what", ""), s.get("style", ""), s.get("lyric", "—"))
             for i, s in enumerate(preset["storyboard"]["shots"]))
         (dest / "storyboard.md").write_text(INIT_STORYBOARD.format(
             name=dest.name, preset="（preset: %s）" % preset_id,

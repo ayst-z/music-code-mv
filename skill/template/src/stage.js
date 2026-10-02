@@ -159,6 +159,88 @@ export function createStage({ width, height }) {
       ctx.restore();
     },
 
+    /**
+     * 广角畸变（桶形曲率 / barrel warp）—— T13 CRT 的「管面是弯的」。
+     * 把画布按行切条，每条绕中心水平缩放：中心放得最多、边缘几乎不变，
+     * 竖线因此被弯成桶形。这是 Canvas2D 上便宜且可信的曲率实现；
+     * NumPy 版请直接用 meshgrid 做 UV 重采样（见 reference/numpy-pillow.md）。
+     * amount 0.10–0.22 之间最像真管子；再大就变成鱼眼了。
+     */
+    barrel(amount = 0.16, rows = 56) {
+      if (!(amount > 0)) return;
+      const off = document.createElement('canvas');
+      off.width = width; off.height = height;
+      off.getContext('2d').drawImage(canvas, 0, 0);
+      const rowH = height / rows;
+      ctx.save();
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, width, height);
+      for (let i = 0; i < rows; i++) {
+        const y0 = Math.round(i * rowH);
+        const y1 = Math.round((i + 1) * rowH);
+        const v = ((y0 + y1) / 2) / height * 2 - 1;          // -1..1，离中心多远
+        const scale = 1 + amount * (1 - v * v);               // 中心放大、边缘保持 1 → 永远铺满
+        const dw = width * scale;
+        ctx.drawImage(off, 0, y0, width, y1 - y0,
+          (width - dw) / 2, y0, dw, y1 - y0);
+      }
+      ctx.restore();
+    },
+
+    /**
+     * 束斑模糊（粒子模糊 / beam-spot blur）—— 电子束打在荧光粉上是一个**软光斑**，
+     * 不是刀切的像素。亮度越高扩散越大，所以它和 bloom 是一对：bloom 管「溢出」，
+     * 这个管「焦外」。radius 按分辨率给：720p 用 1.0–2.5，4K 用 3–6。
+     * 配合 `filter` 一次性软焦；本帧自绘（与 chroma 同一模式，浏览器会先取源快照）。
+     */
+    beamBlur(radius = 1.5) {
+      if (!(radius > 0)) return;
+      ctx.save();
+      ctx.filter = 'blur(' + radius + 'px)';
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.drawImage(canvas, 0, 0);
+      ctx.restore();
+    },
+
+    /**
+     * 荫罩 / 光栅条掩膜（T13 的「什么屏幕」，和扫描线是两回事）：
+     *   'triad'   —— 三色点/条（shadow mask），红绿蓝横排；
+     *   'grille'  —— 垂直条纹（aperture grille），并额外画**一根横向阻尼线**
+     *                （Trinitron 的签名，只有一根，居中偏下）。
+     * 用 multiply 叠：它压暗的是「缝」，不是给画面涂色。
+     */
+    mask(kind = 'grille', alpha = 0.3, cell = 3) {
+      const c = document.createElement('canvas');
+      const s = Math.max(2, Math.round(cell));
+      c.width = kind === 'triad' ? s * 3 : s;
+      c.height = s;
+      const g = c.getContext('2d');
+      if (kind === 'triad') {
+        g.fillStyle = '#ff0000'; g.fillRect(0, 0, s, s);
+        g.fillStyle = '#00ff00'; g.fillRect(s, 0, s, s);
+        g.fillStyle = '#0000ff'; g.fillRect(s * 2, 0, s, s);
+      } else {
+        g.fillStyle = '#ffffff'; g.fillRect(0, 0, Math.max(1, s - 1), s);
+        g.fillStyle = '#000000'; g.fillRect(s - 1, 0, 1, s);
+      }
+      const pat = ctx.createPattern(c, 'repeat');
+      ctx.save();
+      ctx.globalCompositeOperation = 'multiply';
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = pat;
+      ctx.fillRect(0, 0, width, height);
+      ctx.restore();
+      if (kind === 'grille') {
+        // Trinitron 阻尼线：一根极淡的横线，位置固定（确定性）
+        ctx.save();
+        ctx.globalCompositeOperation = 'multiply';
+        ctx.globalAlpha = Math.min(0.45, alpha * 1.1);
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, Math.round(height * 0.58), width, Math.max(1, Math.round(height * 0.0018)));
+        ctx.restore();
+      }
+    },
+
     /** Text with manual letter spacing. Returns the advance width. */
     text(str, x, y, opts = {}) {
       const size = opts.size || 32;

@@ -128,7 +128,7 @@ A frame is also *what screen it is on*. This family stacks over any other style 
 
 ### T13 — CRT 显像管 (Full CRT tube)
 **外观：** 桶形曲率、荫罩三色点或光栅条、扫描线随亮度出现。签名动作是**开关机**：开机=一条水平亮线纵向展开成画面，关机=画面横向塌成一道亮线再缩成一点、余辉熄灭（正是 M17 的收官）；开机瞬间的消磁（degauss）让色纯抖两下，行频失步时画面横向撕裂。
-**原语：** 曲率=桶形 UV 重采样（NumPy 用 meshgrid 一把算，Canvas2D 分条贴回）；荫罩 shadow mask=三色点掩膜 pattern，aperture grille=垂直条纹 **+ 一根横向阻尼线**（Trinitron 的签名）；扫描线**乘性**压暗非亮区，不画黑条；开关机=`clamp(t)` 驱动 y-scale 0↔1 加亮度包络；余辉=在 `t−g·STEP` 上采样 2–3 个重影（T10 的纪律：不读上一帧）。
+**原语：** 模板 `stage.js` 现成三个方法——`stage.barrel(0.10~0.22)`（**广角畸变/桶形曲率**：按行绕中心水平缩放，中心放最多、竖线弯成桶形）、`stage.beamBlur(1~2.5@720p)`（**粒子模糊/束斑**：电子束打在荧光粉上是软光斑，亮度越高扩散越大，和 bloom 成对——bloom 管溢出、这个管焦外）、`stage.mask('triad'|'grille')`（**荫罩三色点/光栅条 + 一根 Trinitron 阻尼线**，multiply 只压暗缝隙）。扫描线用 `stage.scanlines()`（**乘性**压暗非亮区，不画黑条）；开关机=`clamp(t)` 驱动 y-scale 0↔1 加亮度包络；余辉=在 `t−g·STEP` 上采样 2–3 个重影（T10 的纪律：不读上一帧）。行频失步用 `sliceGlitch`，消磁抖动用两次快速 `chroma` 脉冲。NumPy 版的曲率用 meshgrid 直接做 UV 重采样。
 **适用：** 开机/关机段（M1/M17）、`phosphor` 预设、一切"这是一台老机器"的叙事。**与 T4 的分工**：T4 是便宜的覆盖层（扫描线+暗角，叠什么都成立），T13 是整根显像管的仿真——要做曲率与开关机动画时用它。
 **Look:** barrel curvature, mask triads, brightness-driven scanlines, degauss wobble; power-on unfolds a horizontal line into a picture, power-off collapses it to a point (M17's signature move). Persistence is ghosted at `t−g·STEP`, never read from the previous frame. T4 is the cheap overlay; T13 is the whole tube.
 
@@ -198,6 +198,32 @@ A frame is also *what screen it is on*. This family stacks over any other style 
 **适用：** 标题卡、倒计时、数字滚动——M12 的计数器用翻牌比数码管（T16）更有机械质量感；比 T16 更"重"。
 **Look:** airport split-flap boards — flap halves rotating on the seam, columns arriving 40–90 ms apart, deterministic rebound. Title cards and counters (M12) with mechanical mass.
 
+
+
+### 显示器特征核对表 (Display characteristics audit)
+
+逐条自查——**每种显示器都有几条「少一条就不像」的物理特征**，最后一列是模板里能直接调用的原语（`stage.*`）。渲完联系表回来对这张表打勾。
+
+Every display has a few physical traits without which it stops reading as that display. Tick them off against the contact sheet; the last column names the primitive you can call.
+
+| 显示器 | 必须命中（少一条就不像）| 最容易漏的 | 落地原语 / primitive |
+|---|---|---|---|
+| **T13 CRT** | 桶形曲率 · 荫罩三色点或光栅条（含**一根**阻尼线）· 亮度驱动的扫描线 · 余辉重影 · 开关机动画 · 消磁抖 · 行频失步撕裂 · **束斑软焦** | 只做曲率不做**粒子模糊**（束斑是软光斑）；扫描线画成黑条而非乘性压暗 | `stage.barrel` · `stage.mask('triad'/'grille')` · `stage.scanlines` · `stage.beamBlur` · `stage.sliceGlitch` |
+| **T14 矢量屏** | 无像素网格 · 发光笔画 · 指数余辉 · 线宽随束流 · **没有扫描线** | 手贱加了扫描线——矢量屏没有光栅 | 加法发光 + `t−g` 重画 3–5 遍 |
+| **T15 VFD** | 段码字形（不是字体）· 细金属栅网影 · 灯丝横线 · 暗玻璃底 | 用普通字体排数字；底色用纯黑而非带青灰的玻璃 | 段表 + 低 alpha 网格 pattern |
+| **T16 数码管/辉光管** | 熄灭段留 **5% 暗痕** · 辉光管前后叠放（近大远亮）· 氖橙 | 熄灭段完全不画 → 数字像在跳而不是在计数 | 段表 + 层叠 alpha/尺寸 |
+| **T17 LED 点阵** | 可见灯珠与黑缝 · 离散 PWM 灰阶 · 过亮灯珠十字星芒 | 灰阶不加抖动 → 渐变严重分层 | 粗网格重绘 + `round(v*L)/levels` + 抖动 |
+| **T18 LCD** | 可视角度=明暗 · **不发光**（无 bloom 无暗角发光）· 背光不均 · 坏点 · 响应重影 · 子像素 RGB 竖条 | 按发光屏的直觉加了 bloom/暗角 → 立刻变成 OLED | 视角亮度系数 + `t−g` 重影 |
+| **T19 OLED** | 完美黑（不发光就是纯黑）· 无背光溢出 · 子像素文字边缘色 · 烧录残影 | 沿用 LCD 的背光不均 → 黑场变灰 | 直接用 `bg`，不加背光层 |
+| **T20 电子墨水** | 全屏刷新反色闪 · 鬼影/残影 · **零发光** · 纸纹 | 忘了刷新闪（它是换管信号）；给它加了 bloom | 刷新闪 = 满屏反色 0.3–0.4s |
+| **T21 热敏打印** | 单色 · 横向打印条带 · 纸边 · 热度不均的深浅 | 用平滑渐变 → 变成普通单色屏 | 逐行条带 + 固定噪声 |
+| **T22 全息投影** | 体积扫描线 · 闪烁 · **加色合成** · 空气尘埃 · 随距离衰减 | 画成半透明平面 → 像玻璃不像投影 | `screen`/`lighter` + 呼吸 alpha |
+| **T23 VHS** | 跟踪条 · 色度渗出 · 掉磁噪点 · 头切换噪声带 · 帧抖 · 画面柔化 | 只加噪点不给跟踪条 → 像信号差，不像录像带 | `stage.sliceGlitch` + 色度错位 + 底部噪声带 |
+| **T24 机械翻牌** | 中缝切开字 · 上半叶先落 · **列错开 40–90ms** · 停稳回弹 · 哑光牌面 | 整排同时到位 → 机械质量感全没了 | `hash(col)` 做列延迟 + `scaleY` 叶片 |
+
+**通用两条：** ① 显示器是**一层**，叠在母题与排版**下面**，同一段落只用一种（见「组合搭配」）；② 换显示器=换时代，切换必须贴段落边界，并先过一道黑场或刷新闪。
+
+**Two rules for all of them:** a display is *one layer*, placed under motifs and typography, one per segment; and switching displays is switching eras — cut on a section boundary through black or an e-ink refresh flash.
 
 
 ### 选型表 (Choosing a display)
