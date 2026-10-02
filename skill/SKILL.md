@@ -71,6 +71,10 @@ node skills/music-code-mv/scripts/tts.mjs --persona=presets/fairy.json --out=x.w
 node_modules/ffmpeg-static/ffmpeg.exe -i n/01.wav                       # 量实测时长，用来定镜头边界（工作区没有 ffprobe；ffmpeg -i 打印 Duration，退出码 1 属正常）
 ```
 
+**路径坑 / path pitfall**：`--out=` 和 `--batch` 清单里的 `file` 都相对**进程 CWD**（既不是脚本目录、也不是工程目录）。清单里的路径要从「你运行命令的位置」算起——实测有人首跑把 10 段旁白落到了工作区根的 `narration/`，再手工搬进工程。不确定就给 `--out=` 用绝对路径，跑完立刻 `ls` 核对落点。
+
+Both `--out=` and the `file` fields of a `--batch` manifest resolve against the **process CWD** — not the script's directory and not the project. Write paths from wherever you invoke the command (or use an absolute `--out=`) and verify the output location right after.
+
 **音色跟着角色走**：带 `persona` 的角色智能体（如 `fairy`）在 `persona.voice` 里定义音色（`voiceDesignPrompt` 自定义音色 + 内置音色回退），`--persona=` 一条命令套上；批量清单里逐项写 `voice` / `voiceDesignPrompt` 可以让同一支片里换角色说话。
 **The voice follows the character:** agent presets carry `persona.voice` (a `voiceDesignPrompt` plus built-in fallbacks); `--persona=` applies it, and per-item entries in a batch manifest switch characters within one film.
 
