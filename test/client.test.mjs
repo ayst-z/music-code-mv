@@ -196,7 +196,7 @@ ok('视图页 = 全幅管理界面（dshMvPage + dshMvBig，无锚定样式、�
   viewRoot ? String(viewRoot.props.className) : 'missing');
 ok('视图页带完整功能：三区动作 + 预设区 + 页面模式 CSS',
   viewNodes.filter((n) => n.props && n.props['data-act'])
-    .map((n) => n.props['data-act']).join(',') === 'teammate,render,styles,copy' &&
+    .map((n) => n.props['data-act']).join(',') === 'teammate,createPreset,render,styles,copy' &&
   viewNodes.some((n) => n.props && n.props['data-music-mv-opts'] === '1') &&
   SRC.includes('.dshMvPage{position:relative') && SRC.includes('animation:dshMvBig .18s ease-out'),
   'full page panel');
@@ -233,8 +233,8 @@ ok('弹层里没有自定义元素、没有内嵌网页',
   !popupNodes.some((n) => n.type === 'iframe'),
   popupNodes.map((n) => n.type).filter((x) => typeof x === 'string').join(','));
 const acts = popupNodes.filter((n) => n.props && n.props['data-act']);
-ok('弹层四个动作：开工 / 联系表面板 / 风格画廊 / 复制路径',
-  acts.length === 4 && acts.map((n) => n.props['data-act']).join(',') === 'teammate,render,styles,copy',
+ok('面板五个动作：一键开工 / 创建预设 / 联系表面板 / 风格画廊 / 复制路径',
+  acts.length === 5 && acts.map((n) => n.props['data-act']).join(',') === 'teammate,createPreset,render,styles,copy',
   acts.map((n) => n.props['data-act']).join(','));
 ok('开工是第一动作且是主按钮',
   !!acts[0] && acts[0].props['data-act'] === 'teammate' &&
@@ -452,6 +452,21 @@ ok('第二根进度条依次排开（alpha 720 ÷ 720 = 100%）',
   !!alphaBar && alphaBar.props.value === 100 &&
   walkAll(projBtns[1]).some((n) => n.props && String(n.props.children) === '100% · 720/720 帧'),
   alphaBar ? 'value=' + alphaBar.props.value : 'missing');
+// ---- 剩余时间显示 / remaining time ----
+const demoRemain = projKids.find((n) => n.props && n.props['data-project-remain'] === 'demo');
+ok('剩余显示：覆盖率行给剩余帧数（630-386 → 剩 244 帧），归零显示「已完成」',
+  !!demoRemain && demoRemain.props['data-live'] === '0' && demoRemain.props.children === '剩 244 帧' &&
+  walkAll(projBtns[1]).some((n) => n.props && n.props['data-project-remain'] === 'alpha' &&
+    n.props.children === '已完成'),
+  demoRemain ? String(demoRemain.props.children) : 'missing');
+const rtLive = mod.__internals.remainingText(popupT,
+  { pct: 50, done: 4560, total: 9120, live: true }, { startedAt: Date.now() - 50000 });
+ok('剩余时间：运行中按实测速度算 mm:ss（与渲染状态的预计同口径）',
+  /^剩余 \d+:\d{2}$/.test(rtLive), rtLive);
+ok('剩余时间：跑着但算不出速度 / 无进度 → 「—」（不编造）',
+  mod.__internals.remainingText(popupT, null, null) === '—' &&
+  mod.__internals.remainingText(popupT, { pct: 0, done: 0, total: 100, live: true },
+    { startedAt: Date.now() }) === '—', 'honest dash');
 // projectProgress 纯函数：实测值优先 / 覆盖率 / 算不出返回 null
 const ppLive = mod.__internals.projectProgress({ path: 'demo', fps: 30, duration: 21, frames: 386 }, {
   project: 'demo', status: 'running', progress: { pct: 50.4, done: 4560, total: 9120 }
@@ -466,7 +481,7 @@ ok('缺 fps/时长就算不出 → null（不编造，行里显示「—」）',
   mod.__internals.projectProgress({ path: 'x', frames: 10 }, null) === null &&
   mod.__internals.projectProgress(null, null) === null, 'honest null');
 const liveState = Object.assign({}, readyState, {
-  job: { project: 'demo', mode: 'contact', status: 'running', startedAt: Date.now(), progress: { pct: 50, done: 4560, total: 9120 } }
+  job: { project: 'demo', mode: 'contact', status: 'running', startedAt: Date.now() - 50000, progress: { pct: 50, done: 4560, total: 9120 } }
 });
 const liveNodes = walkAll(mod.__internals.popupBody(popupT, 'ready', liveState, retrySpy));
 const liveRow = liveNodes.find((n) => n.props && n.props['data-project'] === 'demo');
@@ -475,6 +490,12 @@ ok('正在渲染的工程行高亮（dshMvProjOn + data-running，条用实测�
   liveRow.props['data-running'] === '1' &&
   walkAll(liveRow).some((n) => n.type === 'progress' && n.props.value === 50),
   liveRow ? String(liveRow.props.className) : 'missing');
+const liveRemain = liveRow && walkAll(liveRow).find((n) => n.props && n.props['data-project-remain'] === 'demo');
+ok('运行中行的剩余时间主色强调（data-live=1 + 剩余 mm:ss + CSS）',
+  !!liveRemain && liveRemain.props['data-live'] === '1' &&
+  /^剩余 \d+:\d{2}$/.test(String(liveRemain.props.children)) &&
+  SRC.includes('.dshMvProgLeft[data-live="1"]'),
+  liveRemain ? String(liveRemain.props.children) : 'missing');
 const openSpyCalls = [];
 const readyNodes2 = walkAll(mod.__internals.popupBody(popupT, 'ready', readyState, retrySpy,
   function (v) { openSpyCalls.push(v); }));
@@ -579,7 +600,7 @@ ok('选中卡片高亮 + aria-pressed',
   onCard ? String(onCard.props.className) : 'missing');
 const showcaseMap = mod.__internals.showcase;
 const showcaseIds = Object.keys(showcaseMap);
-ok('展示图内嵌：preset 缩略以 data URI 落进客户端（384×216 WebP，离线可用、无需宿主路由）',
+ok('展示图内嵌：preset 缩略以 data URI 落进客户端（512×288 WebP，按卡片/宽屏显示尺寸重生成）',
   showcaseIds.length >= 16 && showcaseIds.includes('deepseek') && showcaseIds.includes('claude') &&
   showcaseIds.every((k) => showcaseMap[k].indexOf('data:image/webp;base64,') === 0),
   showcaseIds.length + ' images');
@@ -679,6 +700,24 @@ ok('内置中文名表覆盖全部风格 + 取名规则（title 中文段 → �
   mod.__internals.styleLabel('x-new', '新风格 / New Style') === '新风格' &&
   mod.__internals.styleLabel('unknown-id', '') === 'unknown-id',
   Object.keys(mod.__internals.FALLBACK_STYLE_TITLES).length + ' titles');
+// 创建预设（AI 智能体操作）/ create preset via agent
+const createBtn = optsNodes.find((n) => n.props && n.props['data-act'] === 'createPreset');
+ok('预设区有「创建预设」按钮（AI 智能体操作，标准 button、在预设区内）',
+  !!createBtn && createBtn.type === 'button' && createBtn.props.children === '创建预设' &&
+  typeof createBtn.props.onClick === 'function' &&
+  walkAll(optsRoot).some((n) => n.props && n.props['data-act'] === 'createPreset'),
+  createBtn ? String(createBtn.props.children) : 'missing');
+ok('创建预设指令：以 /music-code-mv 开头、要求按契约生成并跑 audit 自检',
+  mod.__internals.createPresetPrompt.indexOf('/music-code-mv') === 0 &&
+  mod.__internals.createPresetPrompt.indexOf('audit-presets.py') > 0 &&
+  SRC.includes('askAgent(ctx, CREATE_PRESET_PROMPT)'), 'agent prompt wired');
+ok('创建预设回执如实（会话成功 / 剪贴板兜底两档，中英文案齐）',
+  typeof calls.dictionaries.dict.zh['popup.presetSent'] === 'string' &&
+  typeof calls.dictionaries.dict.en['popup.presetSent'] === 'string' &&
+  SRC.includes("'popup.presetSent'") && SRC.includes("'popup.presetClipboard'"),
+  'honest notices');
+ok('打开画廊时重取预设清单（模型新建的预设立刻出现在画廊）',
+  SRC.includes('function onOpenStyles() { fetchPresets();'), 'gallery refetch');
 // 自定义档 + 横竖屏切换按钮 / custom tier + orientation toggle
 ok('清晰度下拉末尾有「自定义」档（value=custom，中英文案齐）',
   optsNodes.some((n) => n.type === 'option' && n.props.value === 'custom' &&
@@ -753,6 +792,8 @@ ok('字典含分条与预设的中英文案（中文优先）',
     'popup.renderStart', 'popup.renderCancel', 'popup.preview', 'popup.previewNone',
     'popup.section.progress', 'popup.hasContact', 'popup.hasVideo',
     'popup.heroStart', 'popup.heroSub', 'popup.heroChips', 'popup.heroNoPresets',
+    'popup.remainTime', 'popup.remainFrames', 'popup.remainDone',
+    'popup.createPreset', 'popup.presetSent', 'popup.presetClipboard',
     'popup.tierCustom', 'popup.orientation', 'popup.w', 'popup.h']
     .every((k) => typeof calls.dictionaries.dict.zh[k] === 'string' &&
       typeof calls.dictionaries.dict.en[k] === 'string') &&
