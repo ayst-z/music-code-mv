@@ -29,16 +29,72 @@ export async function listEncoders(ffmpeg) {
   }
 }
 
+/**
+ * 硬编码器在**这台机器上**真的能不能用 —— 编译进去 ≠ 硬件在场。
+ * ffmpeg 静态构建常常同时编进 qsv/nvenc/amf，但机器上只有其中一块卡；
+ * 只查 `-encoders` 会选中一个根本没有设备的编码器，然后在最后一步整体失败。
+ * 所以这里**真的编一帧**（64x64 单帧，几十毫秒），失败就当它不存在。
+ * Compiled-in does not mean present: encode one real frame before trusting a hardware encoder.
+ */
+const probeCache = new Map();
+
+export async function verifyEncoder(ffmpeg, id) {
+  const key = ffmpeg + '\u0000' + id;
+  if (probeCache.has(key)) return probeCache.get(key);
+  let ok = false;
+  let why = '';
+  try {
+    // 256x144 不是随手选的：QSV 的 AV1/HEVC 在部分 Intel 核显上有最小分辨率，
+    // 64x64 会报 "Current resolution is unsupported" —— 那是探针太小，不是编码器坏。
+    await execFileAsync(ffmpeg, [
+      '-hide_banner', '-loglevel', 'error',
+      '-f', 'lavfi', '-i', 'color=c=black:size=256x144:rate=30',
+      '-frames:v', '1', '-c:v', id, '-f', 'null', '-'
+    ], { maxBuffer: 1 << 20, timeout: 20000 });
+    ok = true;
+  } catch (e) {
+    const raw = ((e && e.stderr) || (e && e.message) || '').toString();
+    const lines = raw.split('\n').map((s) => s.trim()).filter(Boolean);
+    // 末行通常是 "Nothing was written..." 这种废话；真正的原因在前面
+    // （Cannot load nvcuda.dll / amfrt64.dll failed to open / Encoder not found）。
+    const signal = lines.find((l) =>
+      /Cannot load|\.dll|No device|not available|unsupported|Encoder not found|Invalid|denied|failed to open/i.test(l));
+    why = signal || lines[lines.length - 1] || 'encode failed';
+    if (/ENOENT/.test(raw)) why = 'ffmpeg not found';
+  }
+  const result = { ok, why };
+  probeCache.set(key, result);
+  return result;
+}
+
+/**
+ * 选一个编码器：`auto` 时按偏好走硬件，**并且逐个真的试编一次**，第一个通过的上场，
+ * 全部失败就退回软件 x264（绝不谎报「已用硬件加速」）。
+ * Pick an encoder: in auto mode walk the hardware preference and actually test-encode
+ * with each candidate; fall back to software x264 rather than claim acceleration that is not there.
+ * @returns {Promise<{id:string,family:string,label:string,verified:boolean,note?:string}>}
+ */
 export async function pickEncoder(ffmpeg, requested = 'auto') {
   const list = await listEncoders(ffmpeg);
   const has = (id) => new RegExp('\\b' + id + '\\b').test(list);
   if (requested && requested !== 'auto') {
     if (!has(requested)) throw new Error('encoder "' + requested + '" is not available in this ffmpeg build');
-    const fam = (HW_PREFERENCE.find(h => h.id === requested) || {}).family || 'sw';
-    return { id: requested, family: fam, label: requested };
+    const cand = HW_PREFERENCE.find(h => h.id === requested);
+    const fam = cand ? cand.family : 'sw';
+    const v = await verifyEncoder(ffmpeg, requested);
+    return { id: requested, family: fam, label: requested, verified: v.ok, note: v.ok ? undefined : v.why };
   }
-  for (const c of HW_PREFERENCE) if (has(c.id)) return { ...c };
-  return { id: 'libx264', family: 'sw', label: 'software x264' };
+  const failed = [];
+  for (const c of HW_PREFERENCE) {
+    if (!has(c.id)) continue;
+    const v = await verifyEncoder(ffmpeg, c.id);
+    if (v.ok) return { ...c, verified: true };
+    failed.push(c.id + ' (' + (v.why || 'no device') + ')');
+  }
+  return {
+    id: 'libx264', family: 'sw', label: 'software x264', verified: true,
+    note: failed.length ? 'hardware encoders present in this build but unusable here: ' + failed.join(', ') : undefined
+  };
 }
 
 /**

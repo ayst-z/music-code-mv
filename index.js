@@ -39,7 +39,7 @@ export const inject = ['tools'];
  * @property {'png'|'jpeg'} frameFormat  intermediate frame format; jpeg is ~3x faster at 4K
  * @property {string} [chromePath]  override the Chrome/Edge executable
  * @property {string} [ffmpegPath]  override the ffmpeg executable
- * @property {string} [studioRoot]  图形界面扫描工程的工作区根目录（默认 process.cwd()）
+ * @property {string} [studioRoot]  图形界面扫描工程的工作区根目录（默认按 resolveStudioRoot 阶梯解析：配置 → 宿主 cwd → 注册表里有 MV 工程的那个）
  */
 
 /** @type {import('@deepseek-ai/schemastery').default<Config>} */
@@ -195,6 +195,14 @@ export function apply(ctx, config) {
   const cfg = config || {};
 
   /**
+   * 所有工具的路径参数都相对「用户工作区」解析，而不是宿主进程的 cwd ——
+   * 桌面版进程的 cwd 是 profile 目录，裸 path.resolve 会把相对路径写到工作区外
+   * （对话里默认的启动位置就错了）。与图形界面共用同一条 resolveStudioRoot 阶梯。
+   * Every tool resolves paths against the user's workspace, never the host cwd.
+   */
+  const fromWorkspace = (p) => path.resolve(resolveStudioRoot(ctx, cfg), String(p));
+
+  /**
    * 图形界面的宿主半边。有 webServer 的 profile（Web / 桌面版）里会挂到
    * /music-mv/studio；纯 base profile 里保持为 null，工具照常工作。
    */
@@ -267,7 +275,7 @@ export function apply(ctx, config) {
     ' / Check whether this machine can render music-code-mv videos.',
     { projectDir: { type: 'string', description: 'Project directory to probe for a local node_modules. Defaults to the working directory.' } },
     async (args) => {
-      const dir = args && args.projectDir ? path.resolve(String(args.projectDir)) : process.cwd();
+      const dir = args && args.projectDir ? fromWorkspace(args.projectDir) : resolveStudioRoot(ctx, cfg);
       const r = await runScript('probe.mjs', [dir]);
       return formatResult('music-code-mv 环境自检 / environment probe', r, { note: 'READY 表示渲染所需的一切都在。 / READY means everything needed for a render is present.' });
     }
@@ -282,14 +290,15 @@ export function apply(ctx, config) {
     {
       dir: { type: 'string', required: true, description: 'Project directory to create / 要创建的工程目录。' },
       force: { type: 'boolean', description: 'Overwrite a non-empty directory / 覆盖非空目录。' },
-      preset: { type: 'string', description: '预设 preset: neon-rain | ink-paper | phosphor | dusk-lofi（见 music_mv_guide topic=presets）。省缺则用模板默认配色。' }
+      preset: { type: 'string', description: '预设 preset: claude | deepseek | gpt | gemini | grok | mistral | llama | qwen | kimi | doubao | zhipu | midjourney | neon-rain | ink-paper | phosphor | dusk-lofi（共 16 个，见 music_mv_guide topic=presets）。省缺则用模板默认配色。' }
     },
     async (args) => {
       const dir = String(args.dir);
-      const argv = [dir];
+      const root = resolveStudioRoot(ctx, cfg);          // 相对路径落在用户工作区，不是宿主 cwd
+      const argv = [path.resolve(root, dir)];
       if (args.force) argv.push('--force');
       if (args.preset) argv.push('--preset=' + String(args.preset));
-      const r = await runScript('init.mjs', argv, { cwd: process.cwd() });
+      const r = await runScript('init.mjs', argv, { cwd: root });
       return formatResult('生成工程 / scaffold ' + dir, r, { note: '下一步：先改 storyboard.md，再跑 music_mv_render mode=contact。 / Next: edit storyboard.md, then render a contact sheet.' });
     }
   ));
@@ -322,7 +331,7 @@ export function apply(ctx, config) {
       depth: { type: 'number', description: 'Output color depth: 8 (default) | 10 | 12. 12 = HEVC main12 (auto-switches to libx265); HDR10 masters are at least 10.' }
     },
     async (args) => {
-      const projectDir = path.resolve(String(args.projectDir));
+      const projectDir = fromWorkspace(args.projectDir);
       if (!fs.existsSync(path.join(projectDir, 'index.html'))) {
         return { text: '目录里没有 index.html / No index.html in ' + projectDir + '。先用 music_mv_init 生成一个工程。' };
       }
@@ -421,7 +430,7 @@ export function apply(ctx, config) {
       if (typeof args.lrc !== 'string') {
         throw new Error('music_mv_lyrics: parameter "lrc" is required (the full LRC text)');
       }
-      const projectDir = path.resolve(String(args.projectDir));
+      const projectDir = fromWorkspace(args.projectDir);
       const mode = args.mode === undefined || args.mode === null || args.mode === '' ? 'replace' : String(args.mode);
       if (mode !== 'replace' && mode !== 'append') {
         throw new Error('music_mv_lyrics: unknown mode "' + mode + '" (use "replace" or "append")');
@@ -508,7 +517,7 @@ export function apply(ctx, config) {
         }
         n[key] = num;
       }
-      const projectDir = path.resolve(String(args.projectDir));
+      const projectDir = fromWorkspace(args.projectDir);
       const fa = findFrame(projectDir, n.a);
       const fb = findFrame(projectDir, n.b);
       if (!fa || !fb) {

@@ -264,7 +264,11 @@ async function encode() {
       }
     }
   }
-  log('encoder: ' + encoder.label + (hdr10 ? '  [HDR10 / Rec.2020 PQ / 10-bit]' : '') +
+  const hw = encoder.family !== 'sw';
+  log('encoder: ' + encoder.label +
+    (hw ? (encoder.verified ? '  [hardware verified — test frame encoded]' : '  [UNVERIFIED: ' + (encoder.note || 'test encode failed') + ']') : '') +
+    (!hw && encoder.note ? '  [' + encoder.note + ']' : '') +
+    (hdr10 ? '  [HDR10 / Rec.2020 PQ / 10-bit]' : '') +
     (DEPTH >= 10 ? '  [' + DEPTH + '-bit color]' : ''));
 
   const args = buildEncodeArgs({

@@ -101,6 +101,27 @@ ffmpeg -y -framerate <fps> -i frames/f%04d.png \
 - `crf 17–18` is visually lossless for synthetic graphics; `+faststart` makes it stream.
 - Add `-c:a aac -b:a 192k -shortest` when muxing audio, with the audio as the second input and `-c:v copy`.
 
+## GPU 加速 (GPU acceleration)
+
+管线里有三处吃硬件，`node scripts/probe.mjs` 把它们**分开报**——「WebGL 能用」不等于「GPU 在用」：
+
+| probe 行 | 它到底在回答什么 |
+|---|---|
+| `webgl (live test)` | 故意走 SwiftShader 的**能力门**：只回答「这台机器有没有 WebGL」，与显卡无关 |
+| `gpu (hardware GL)` | 按渲染器**真实使用的参数**起一次 Chrome，读出实际在用的显卡；失败就退软件并注明 |
+| `encoder (live test)` | **真的编一帧**之后才报最终编码器，标 `HARDWARE` 或 `software` |
+
+本机实测：`gpu (hardware GL)  ANGLE (Intel(R) Arc(TM) Graphics … Direct3D11)` · `encoder (live test)  HARDWARE  Intel QSV AV1  (test frame encoded)`。
+
+- **画 / render**：`--gl=gpu`（默认）自动带上 `--use-gl=angle --use-angle=d3d11 --ignore-gpu-blocklist --enable-gpu-rasterization --enable-zero-copy`；`--gl=soft` 强制 SwiftShader；`gl=auto` 检出空帧会自动回退到软渲并说明。Three.js/WebGL 镜头天然走 GPU。
+- **编 / encode**：`--encoder=auto`（默认）按 `qsv > nvenc > amf > x264` 挑，**每个候选都先真编一帧（256×144，几十毫秒）再上场**，全失败才回软件 x264。
+- **为什么必须真编一帧**：ffmpeg 静态构建经常把 `qsv`/`nvenc`/`amf` 一起编进去，但机器上未必有那块卡。只查 `-encoders` 会选中 `h264_nvenc`，然后在最后一步整体失败（`Cannot load nvcuda.dll`）。实测本机：三个 QSV 可用，`h264_nvenc` 报 `Cannot load nvcuda.dll`、`h264_amf` 报 `amfrt64.dll failed to open`。
+- **探针尺寸别太小**：QSV 的 AV1/HEVC 在部分 Intel 卡上有最小分辨率，64×64 会报 `Current resolution is unsupported`——那是探针太小，不是编码器坏（256×144 才是安全值）。
+- 降级是**如实**的：日志会打 `[hardware verified — test frame encoded]`，或退回软件并列出哪些硬件编码器不可用及原因，绝不谎报「已用硬件加速」。
+- `render-np.py` 是纯 CPU（NumPy 向量化），不走 GPU；要 GPU 就换 Chrome 引擎的 Three.js/WebGL 镜头。
+
+Three separate things touch hardware, and `probe.mjs` reports each one separately — "WebGL works" is not "the GPU is in use". Render-side flags come from `--gl=gpu` (hardware ANGLE/D3D11 plus GPU rasterization and zero-copy), with `--gl=soft` to force SwiftShader. Encode-side, `--encoder=auto` walks `qsv > nvenc > amf > x264` and **test-encodes one frame with each candidate before trusting it**, because a static ffmpeg build happily lists `nvenc`/`amf` on a machine that has neither card. Falls back to software x264 with the reasons logged — acceleration is never claimed when it did not happen. The NumPy engine is CPU-only by design.
+
 ## 字体 (Fonts)
 
 只用系统字体族（`ui-monospace, "Cascadia Mono", Consolas, monospace`）。走网络的 webfont `@font-face` 既破坏确定性又拖慢速度；实在要用，就把字体作为本地文件内嵌，并在 `__ready` 之前 `await document.fonts.ready`。

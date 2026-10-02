@@ -4,9 +4,9 @@
     "description": "Write a music video as code: a Chinese GUI plus a deterministic render pipeline."
   },
   "entry": {
-    "label": "MV Studio",
-    "tooltip": "Open MV Studio: projects, contact sheets and films, render status",
-    "offline": "MV Studio (offline: host API unreachable — the page shows its offline panel)",
-    "unavailable": "MV Studio page unavailable: the page type is not registered."
+    "label": "codeMV",
+    "tooltip": "codeMV · MV Studio / MV 工坊",
+    "offline": "MV Studio (offline: host API unreachable — the popup says so honestly)",
+    "unavailable": "The studio page cannot be opened: the plugin page type failed to register."
   }
 }

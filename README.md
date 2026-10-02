@@ -102,8 +102,8 @@ This package ships **plain JavaScript**, so there is no build step and no `allow
 Other routes / 其他方式:
 
 ```bash
-dsh plugin --profile demo add github:<you>/dsh-music-code-mv#<sha>   # from git, pinned / 从 git，锁 commit
-pnpm pack && dsh plugin --profile demo add ./dsh-music-code-mv-0.1.0.tgz   # from a tarball / 从 tarball
+dsh plugin --profile demo add github:ayst-z/music-code-mv#<sha>  # from git, pinned / 从 git，锁 commit
+pnpm pack && dsh plugin --profile demo add ./dsh-music-code-mv-0.2.0.tgz   # from a tarball / 从 tarball
 dsh plugin --profile demo remove dsh-music-code-mv                   # uninstall / 卸载
 ```
 
@@ -220,14 +220,26 @@ The host half registers the studio under `/music-mv` on the DSH webServer; the b
 ![深色 / dark](skill/reference/img/studio-dark.png)
 ![浅色 / light](skill/reference/img/studio-light.png)
 
-**常驻控制面板 / always-on side panel**：插件一载入，右下角固定一块「MV 工坊」控制面板并一直显示——环境状态灯、工程下拉、一键联系表、渲染进度条、打开完整面板。它挂在 `shell.overlay` 上，只有用户主动收起才会变成一枚小胶囊，不会被卸载。完整面板挂在右侧边栏，关闭后随时可从 `+` 或面板再打开。
-On load the plugin pins a **MV Studio control panel** at the bottom-right and keeps it there: status dot, project picker, one-click contact sheet, render progress, and a button to the full panel. It registers into `shell.overlay`, so only the user's own collapse hides it — never unload.
+**codeMV 标题栏入口 / the codeMV title-bar entry**：对话标题栏右上角常驻一枚 **codeMV** 图标按钮，点开是一个**原生弹层**——只用标准 DOM 标签 + DSH 设计令牌，不创建自定义元素、不内嵌网页。**没有右下角悬浮窗**：入口收进标题栏，画面不再被一块常驻面板占着。
 
-**怎么打开 / how to open**：右下角的常驻面板一直在；完整面板走右侧边栏标签栏的 `+` → 「MV 工坊」（首次激活会自动打开一次）。也可以直接用浏览器访问 `http://127.0.0.1:<port>/music-mv/studio`，或让模型调 `music_mv_studio` 拿地址。
-Open it from the tab strip's `+` → **MV Studio**; the plugin auto-opens it once on first activation. Or open `http://127.0.0.1:<port>/music-mv/studio` in a browser, or ask the model for the URL with `music_mv_studio`.
+弹层里第一屏是 `/music-mv/api/state` 的**实测值**（工作区、工程数、当前渲染任务）；接口不可达就如实写「离线」，**不摆占位数据**。下面四个动作：
 
-**无服务也能用 / works without the service**：没有 `webServer` 的 profile（headless、TUI、纯 base）里，工作室网页不挂载，但常驻面板自动进入**离线模式**——不轮询、不发请求，按钮把要求直接交给模型；渲染完成后**联系表会作为图片直接回到对话里**。HTTP 路由只是给内嵌面板加速的可选项，不是插件的必需品。
-In a profile without `webServer`, the studio page is absent but the dock switches to **offline mode**: no polling, no requests, actions go to the model, and **contact sheets return to the chat as image blocks**. The HTTP routes are an optional accelerator, never a requirement.
+| 动作 | 降级链 / fallback chain |
+|---|---|
+| **以队友/子代理开工**（主按钮） | 宿主原生 `agentTeams.spawnTeammate` → `POST /music-mv/api/kickoff` → 当前会话发出「以子代理/队友形式开工」→ 复制开工指令到剪贴板；**每一级都如实回报走到哪一级，绝不谎报成功** |
+| 打开工作室页面 | 已注册的页面类型 → 宿主工作室地址 → 如实提示打不开 |
+| 渲染联系表 | 没有工程就说没有；提交失败就报失败 |
+| 复制工作区路径 | 剪贴板被拦时如实报「复制失败」 |
+
+宽度不够时 label 折叠成纯图标（`@container (max-width: 760px)` 优先，`@media (max-width: 960px)` 兜底），`title` + `aria-label` 常驻；样式走宿主设计令牌，明暗主题自动跟随。
+
+The top-right **codeMV** button in the conversation title bar opens a **native popup** built from standard DOM tags and host design tokens — no custom element, no embedded page, and **no bottom-right floating window**. Its first screen shows live `/music-mv/api/state` values (workspace, project count, current job) and says *offline* honestly when the API is unreachable — never placeholder data. The primary action **kicks off as a teammate/subagent** through a four-stage fallback chain (native `agentTeams.spawnTeammate` → `POST /music-mv/api/kickoff` → send the instruction to the current session → clipboard), reporting which stage actually worked.
+
+**怎么打开 / how to open**：标题栏右上角的 **codeMV** 按钮就是入口（本体常驻，随时可点）。完整面板走右侧边栏标签栏的 `+` → 「MV 工坊」（首次激活会自动打开一次）。也可以直接用浏览器访问 `http://127.0.0.1:<port>/music-mv/studio`，或让模型调 `music_mv_studio` 拿地址。
+The **codeMV** button is always in the title bar; the full panel lives in the sidebar tab strip under `+` → **MV Studio** (auto-opened once on first activation). Or open `http://127.0.0.1:<port>/music-mv/studio` in a browser, or ask the model for the URL with `music_mv_studio`.
+
+**无服务也能用 / works without the service**：没有 `webServer` 的 profile（headless、TUI、纯 base）里，工作室网页不挂载，侧栏主体自动进入**离线模式**——不轮询、不发请求，按钮把要求直接交给模型（开工同样走队友/子代理降级链）；渲染完成后**联系表会作为图片直接回到对话里**。HTTP 路由只是给内嵌面板加速的可选项，不是插件的必需品。
+In a profile without `webServer` the studio page is absent and the sidebar body switches to **offline mode**: no polling, no requests, actions go straight to the model (kickoff still falls back through the teammate/subagent chain), and **contact sheets return to the chat as image blocks**. The HTTP routes are an optional accelerator, never a requirement.
 
 **边界 / boundaries**：所有路径都解析到工作区内，`..` 越界一律 403；只允许读，不在界面上改工程源码；同一时刻只跑一个渲染任务。界面路由直接挂在 webServer 上，因此只监听回环地址（`127.0.0.1`）。
 Every path resolves inside the workspace root and `..` escapes are rejected with 403; the GUI never edits project sources; one render job at a time. The routes sit on the loopback-only webServer.
@@ -236,22 +248,53 @@ Every path resolves inside the workspace root and `..` escapes are rejected with
 
 ## 预设 / Presets
 
-四个开箱即用的预设：一条命令拿到配色、后期、时长、分镜与占位歌词，生成即可渲染。下面是它们各自的实拍联系表。
-Four ready-to-use presets: one command yields palette, post-processing, duration, storyboard and placeholder lyrics. The sheets below are real renders.
+16 个开箱即用的预设：一条命令拿到配色、后期、时长、分镜与占位歌词，生成即可渲染。**4 个氛围预设 + 12 个主流 AI 模型品牌配色**（品牌色取自官网 CSS 与官方 logo SVG），下面是全部 16 个的实拍联系表。
+16 ready-to-use presets: one command yields palette, post-processing, duration, storyboard and placeholder lyrics. **Four mood presets plus twelve mainstream AI-model brand palettes** (pulled from official CSS and logo SVGs); below are real renders of all sixteen.
 
-| `neon-rain` 霓虹雨夜 | `ink-paper` 纸墨 |
-|---|---|
-| ![neon-rain](skill/reference/img/preset-neon-rain.png) | ![ink-paper](skill/reference/img/preset-ink-paper.png) |
-| `phosphor` 磷光终端 | `dusk-lofi` 落日低保真 |
-| ![phosphor](skill/reference/img/preset-phosphor.png) | ![dusk-lofi](skill/reference/img/preset-dusk-lofi.png) |
+| `claude` 橙白 | `deepseek` 蓝黑 | `doubao` 蓝橙 | `dusk-lofi` 落日低保真 |
+|---|---|---|---|
+| ![claude](skill/reference/img/preset-claude.png) | ![deepseek](skill/reference/img/preset-deepseek.png) | ![doubao](skill/reference/img/preset-doubao.png) | ![dusk-lofi](skill/reference/img/preset-dusk-lofi.png) |
+| `gemini` 渐变 | `gpt` 黑白 | `grok` 黑橙 | `ink-paper` 纸墨 |
+| ![gemini](skill/reference/img/preset-gemini.png) | ![gpt](skill/reference/img/preset-gpt.png) | ![grok](skill/reference/img/preset-grok.png) | ![ink-paper](skill/reference/img/preset-ink-paper.png) |
+| `kimi` 蓝 | `llama` Meta 蓝 | `midjourney` 墨蓝 | `mistral` 暖橙 |
+| ![kimi](skill/reference/img/preset-kimi.png) | ![llama](skill/reference/img/preset-llama.png) | ![midjourney](skill/reference/img/preset-midjourney.png) | ![mistral](skill/reference/img/preset-mistral.png) |
+| `neon-rain` 霓虹雨夜 | `phosphor` 磷光终端 | `qwen` 紫 | `zhipu` 智谱 三色 |
+| ![neon-rain](skill/reference/img/preset-neon-rain.png) | ![phosphor](skill/reference/img/preset-phosphor.png) | ![qwen](skill/reference/img/preset-qwen.png) | ![zhipu](skill/reference/img/preset-zhipu.png) |
 
 ```bash
-node skill/scripts/init.mjs my-mv --preset=neon-rain   # 套用预设 / apply a preset
-node skill/scripts/init.mjs --list-presets             # 列出预设 / list presets
-node tools/make-docs-images.mjs                        # 重出上面这些图 / regenerate these images
+node skill/scripts/init.mjs my-mv --preset=deepseek  # 套用预设 / apply a preset
+node skill/scripts/init.mjs --list-presets           # 列出 16 个预设 / list all 16
+node tools/make-docs-images.mjs                      # 重出上面这些图 / regenerate these images
+python skill/scripts/audit-presets.py                # 配色纪律测试 R1–R4 / palette discipline test
 ```
 
 细节见 [skill/reference/presets.md](skill/reference/presets.md)。
+
+---
+
+## 展示短片 / Showcase short
+
+`feature-demo` 是一支 **76 秒的全功能巡礼短片**：开场 `codeMV` 字标弹性归位 → 16 预设色卡巡游 → 显示器家族六连拍（CRT 磷光 / VFD 荧光 / LED 点阵 / 机械翻牌 / 电子墨水 / VHS）→ 手写透视 3D 与后期通道逐个点亮 → 双引擎分屏同绘 → CRT 关机塌缩收尾。旁白由 MiMo TTS 六段合成，每段都先合成、量到真实时长再排分镜，最后按镜头起点摆位混成一条音轨。
+
+**规格 / spec** —— 母版 `3840×2160 · 120fps · AV1 + AAC · 76.00s`（953 MB，属渲染产物，不入库）；下面是派生的文档小样 `1280×720 · 30fps · h264 · 2.2 MB`，已按体积纪律放进 `reference/video/`。
+
+<video src="skill/reference/video/feature-demo-preview.mp4" controls width="720" muted></video>
+
+[下载这支短片 / download the clip](skill/reference/video/feature-demo-preview.mp4)
+
+分镜联系表（12 张等距关键帧，自检用）/ storyboard contact sheet:
+
+![feature-demo showcase](skill/reference/img/feature-demo.png)
+
+```bash
+node skill/scripts/init.mjs feature-demo --preset=deepseek            # 脚手架 / scaffold
+node skill/scripts/tts.mjs --batch=narration.json                     # 六段旁白 / six narration clips
+node skill/scripts/render.mjs --project=feature-demo --contact --w=480 --h=270   # 自检 / self-check
+node skill/scripts/render.mjs --project=feature-demo --out=out/video.mp4 \
+  --audio=narration/track.wav --workers=10                            # 成片 / master
+```
+
+机器自检会把三处分开报：`webgl`（能力门）、`gpu (hardware GL)`（实际在用的显卡）、`encoder (live test)`（真编一帧后的编码器）。详见 [skill/reference/techniques.md](skill/reference/techniques.md) 的 GPU 加速一节。The probe reports WebGL capability, the GPU actually in use, and the encoder after a real test frame — see the GPU section in `techniques.md`.
 
 ---
 

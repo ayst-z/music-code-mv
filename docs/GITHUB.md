@@ -49,8 +49,11 @@ dsh-music-code-mv/
     └── template/         工程骨架 / project skeleton
 ```
 
-**文件规模纪律**：仓库只收源码与文档。`frames/`（帧缓存，实测可达 17.9 GB）、`out/`（成片）、`node_modules/`、`__pycache__/`、音频母版一律不进 git——它们可重建、体积大、且受 GitHub 单文件 100 MB 上限约束（§9）。
-**Size discipline:** the repo takes source and docs only. Frame caches (measured up to 17.9 GB), outputs, dependencies and audio masters never enter git — they are rebuildable and collide with GitHub's 100 MB file limit (§9).
+**文件规模纪律**：仓库只收源码与文档。`frames/`（帧缓存，实测 17.3 GB）、`out/`（母版成片）、`node_modules/`、`__pycache__/`、音频母版一律不进 git——它们可重建、体积大，且撞 GitHub 单文件 100 MB 上限（§9）。
+
+**唯一例外 —— 精编文档资产**：为 README 展示而**派生**出的图与短片可以入库，必须同时满足三条：① 放在 `skill/reference/` 下（图进 `img/`，短片进 `video/`）；② 单文件 ≤ 5 MB；③ 由 `out/` **派生而非原样拷贝**（例如 4K 母版降到 1280×720/30fps 的文档小样，953 MB → 2.2 MB）。它是文档内容，不是渲染产物。
+
+**Size discipline:** the repo takes source and docs only — frame caches (measured 17.3 GB), masters, dependencies and audio never enter git; they collide with GitHub's 100 MB file limit. **One exception:** curated docs assets (contact sheets and preview clips) may ship when they live under `skill/reference/`, stay ≤ 5 MB each, and are *derived* from a master rather than copied from `out/`.
 
 ---
 
@@ -203,6 +206,9 @@ git revert <sha> && git push origin master     # 公开历史用 revert，不用
 **策略**：git 只管源码；音频母版（`.flac/.wav/.m4a`）、4K/HDR 成片（`.mp4`）体积大、可重建性弱，走 **GitHub Release 资产**。
 **Policy:** git holds source; audio masters and 4K/HDR films are large and not rebuildable — they ship as **GitHub Release assets**.
 
+**派生小样走 git，母版走 Release**：文档需要能内联播放的短片时，从母版压一个 ≤5 MB 的小样放进 `reference/video/`（见 §1 的精编资产例外），母版本体仍进 Release。实测一次派生：`953 MB 4K120 AV1 → 2.2 MB 720p h264`。
+**Derive, do not ship the master:** for an inline README clip, compress a ≤5 MB cut into `reference/video/` and keep the master on Releases. Measured once: `953 MB 4K120 AV1 → 2.2 MB 720p h264`.
+
 ```bash
 # 创建发布 / create
 gh release create v0.2.0 \
@@ -260,7 +266,8 @@ dsh --dump-config | findstr /C:"dsh-music-code-mv"   # 应出现 "# == dsh-music
 | 密钥与 token | GitHub 与云厂商密钥前缀、硬编码会话 token | 改读环境变量；已落盘的凭据轮换 / move to env, rotate |
 | 个人绝对路径 | 任何指向用户目录的绝对路径（`C:\<用户目录>\…` 形态） | 相对路径或 `process.env` 化 / de-absolute |
 | 未发表个人作品 | 工作区根的个人记录文件（文件名见内部 `docs/PRIVACY.md`） | **永不入库**，根 `.gitignore` 双保险 / never, double-locked |
-| 渲染产物 | `frames/`、`out/`、`*.mp4`、`__pycache__/` | `.gitignore` + sync 排除表双保险 / both firewalls |
+| 渲染产物 | `frames/`、`out/` 的原样文件、音频母版、`__pycache__/` | `.gitignore` + sync 排除表双保险 / both firewalls |
+| 超标媒体 | `reference/` 下 >5 MB 的图或短片、任何 >100 MB 的单文件 | 派生出小样入库；母版走 Release（§6）/ derive a small cut, master to Releases |
 | 未复核截图 | 真实界面截图可能残留路径与会话标题 | 发布前人工过目 / human review before shipping |
 | 根工作区建仓 | **工作区根目录永不 `git init`** | 根有 19 GB 产物与个人文件；发布只从 `plugins/dsh-music-code-mv/` 出去 / never init the root |
 

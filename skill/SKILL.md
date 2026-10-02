@@ -55,6 +55,23 @@ Eight steps: **interview** → storyboard; scaffold; build one scene module per 
 
 When the frame is fundamentally **math** (fields, SDFs, fractals, sampling), when you need pixel-exact grid typography, or when headless Chrome cannot start (sandbox `spawn EPERM`), switch engines: `render-np.py` scaffolds (`--init`), self-checks (`--contact`) and renders (`--out=out/video.mp4`) with the identical contract, frame cache, contact sheet and preset set. Full recipes for the four core methods — frame-by-frame rendering, 3D perspective projection, strict grid & type scale, segmented color script — live in `reference/numpy-pillow.md`.
 
+### 配音：MiMo TTS (Narration)
+
+有旁白的片子，**先把每段旁白合成出来、量到真实时长，再排分镜**——否则镜头边界和语音对不上，返工的是整条时间线。走本机 DSH 的 Xiaomi MiMo TTS 代理（只连回环地址，不访问任何外部服务）：
+
+```bash
+node skills/music-code-mv/scripts/tts.mjs --probe                   # 先确认配音可用
+node skills/music-code-mv/scripts/tts.mjs --out=n/01.wav "第一段旁白"  # 单段
+node skills/music-code-mv/scripts/tts.mjs --batch=narration.json      # 批量：[{file,text},…]
+ffprobe -i n/01.wav                                                  # 量实测时长，用来定镜头边界
+```
+
+拿到各段时长后按下表排时间线，再用 `adelay=<ms>:all=1` 把每段摆到它的镜头起点、`amix=inputs=N:normalize=0` 合成一条 `track.wav`（`apad=whole_dur=<总长>` 补齐），最后 `--audio=narration/track.wav` 交给渲染器封装，`-shortest` 保证音画同长。
+
+`--probe` 会把失败原因说清楚：`NOT READY` 后面跟着「没配 API Key」（去 设置 → 插件 → dsh-xiaomi-tts 存一个 Key）、「DSH 没开/端口不对」或「上游没回音频」。**不要**在没 probe 的情况下假设配音可用，也不要拿 TTS 失败当静音片交差——先问用户。
+
+For any film with narration, **synthesize every line first and lay out the storyboard from the measured durations**; aligning shots to guessed lengths means redoing the whole timeline. The script talks only to the loopback DSH proxy, never to an outside service. Place each clip at its shot start with `adelay`, mix with `amix` (normalize off), pad to the film length, then hand the track to `--audio=`. `--probe` prints the exact reason when it is not ready — never assume narration works, and never silently ship a mute cut instead of asking.
+
 ### 0. 询问 —— 先问，再动手 (Interview — ask first)
 
 **没有这一步就不要开始渲染。** 用 `ask_user_question` 一次问 4–6 个问题，每个选项都写清后果；拿到答复再写分镜。**Ask before you build:** one `ask_user_question` call, 4–6 questions, each option carrying its tradeoff; only then write the storyboard.

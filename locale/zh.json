@@ -4,9 +4,9 @@
     "description": "把 MV 写成代码：中文图形界面 + 确定性渲染管线。"
   },
   "entry": {
-    "label": "MV 工坊",
-    "tooltip": "打开 MV 工坊：工程、联系表与成片、渲染状态",
-    "offline": "MV 工坊（离线：宿主接口不可达，页面里会给出离线提示）",
-    "unavailable": "MV 工坊页面不可用：插件页面类型没有注册成功。"
+    "label": "codeMV",
+    "tooltip": "codeMV · MV 工坊 / MV Studio",
+    "offline": "MV 工坊（离线：宿主接口不可达，弹层里会如实显示离线）",
+    "unavailable": "打不开工作室页面：插件页面类型没有注册成功。"
   }
 }

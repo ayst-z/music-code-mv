@@ -104,6 +104,56 @@ if (chrome && puppeteerOk) {
 }
 add(!/FAILED|NO WEBGL/.test(webgl) && webgl !== 'skipped (chrome or puppeteer missing)', 'webgl (live test)', webgl);
 
+// 硬件 GPU 实测：上面的 webgl 是故意走 SwiftShader 的（保证「有没有 WebGL」这个问题
+// 与显卡无关），但用户想知道的是**实际用的是哪块卡**，所以这里再按渲染器真正使用的
+// 硬件参数起一次 Chrome，读出显卡名。
+let gpu = 'skipped (chrome or puppeteer missing)';
+if (chrome && puppeteerOk) {
+  let b2 = null;
+  try {
+    b2 = await puppeteerMod.launch({
+      executablePath: chrome, headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--ignore-gpu-blocklist',
+        '--use-gl=angle', '--use-angle=d3d11', '--enable-gpu-rasterization', '--enable-zero-copy']
+    });
+    const p2 = await b2.newPage();
+    await p2.setContent('<canvas id="g" width="64" height="64"></canvas>');
+    gpu = await p2.evaluate(() => {
+      const c = document.getElementById('g');
+      const gl = c.getContext('webgl2') || c.getContext('webgl');
+      if (!gl) return 'NO HARDWARE WEBGL CONTEXT';
+      const d = gl.getExtension('WEBGL_debug_renderer_info');
+      return d ? gl.getParameter(d.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.VERSION);
+    });
+  } catch (e) {
+    gpu = 'FAILED: ' + (e && e.message ? e.message : e);
+  } finally {
+    if (b2) await b2.close().catch(() => {});
+  }
+}
+const gpuIsSoftware = /swiftshader|llvmpipe|software|basic render/i.test(String(gpu));
+add(!/FAILED|NO HARDWARE/.test(String(gpu)) && !String(gpu).startsWith('skipped'), 'gpu (hardware GL)',
+  String(gpu) + (gpuIsSoftware ? '   <- software raster: hardware GL NOT in use (render still works)' : ''));
+
+// 编码器实测：`-encoders` 只说明 ffmpeg 编译了什么，不说明这台机器有没有那块卡。
+// 这里真的编一帧，报出最终会用上的编码器（并注明是硬件还是软件）。
+let encInfo = 'skipped (ffmpeg missing)';
+let encOk = true;
+if (ffmpeg) {
+  try {
+    const { pickEncoder } = await import(pathToFileURL(path.join(HERE, 'lib', 'encode.mjs')).href);
+    const enc = await pickEncoder(ffmpeg, 'auto');
+    encInfo = (enc.family === 'sw' ? 'software  ' : 'HARDWARE  ') + enc.label +
+      (enc.family !== 'sw' && enc.verified ? '  (test frame encoded)' : '') +
+      (enc.note ? '  [' + enc.note + ']' : '');
+    if (enc.family !== 'sw' && !enc.verified) encInfo += '  UNVERIFIED';
+  } catch (e) {
+    encInfo = 'NOT USABLE: ' + (e && e.message ? e.message : e);
+    encOk = false;
+  }
+}
+add(encOk, 'encoder (live test)', encInfo);
+
 let w = 0;
 for (const r of rows) w = Math.max(w, r.name.length);
 console.log('');
