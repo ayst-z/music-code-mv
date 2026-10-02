@@ -30,6 +30,33 @@ The agent acts as **director + renderer**: storyboard first, build shot by shot,
 4. **One thing happens per shot.** A shot with no event is a bug.
 5. **Text must be readable.** If a lyric is on screen, it is the loudest element in the frame.
 
+## 自由模式 (Free mode)
+
+**在自由模式下，本 skill 的全部内容都是参考，不是规则。** 规矩 0–5、八步工作流、询问先行、分镜先行、联系表自检、配色纪律 R1–R4、叠层纪律、节奏与连续动画、各类伪代码与命令模板、门禁阈值与跑分数字——**一律可违反，且不必给理由**。上面写着「不可妥协」的那五条，在这个模式里也只是参考。
+
+**怎么进入**：用户说「自由发挥 / 即兴 / 别管规则 / 你自己定」，或你判断他要的是探索而非交付。进入后在 `storyboard.md` 顶部写一行，并在回报里声明：
+
+```yaml
+mode: free      # 自由模式：本片所有 skill 规则降级为参考
+```
+
+**这个模式下你可以做的事**（都是标准模式禁止的）：
+- 跳过询问直接开渲；从空白画布起手、不先写分镜
+- 违反任何阈值：镜头 0.8s 或 30s、对比度不达标、饱和撞色、文字压杂背景、存在静止帧、切点不对拍
+- 混搭「按规则不该组合」的东西：CRT 上再糊 VHS、一个段落两种显示器、第四支点缀色、fx 层自己加信息
+- 试错式推进：渲了再改、用墙钟与真随机、不留任何自检记录
+- 把规则里的清单**当菜单反过来用**——「我打算违背哪几条」本身就是创作选择
+
+**仍然值得知道的（参考，不是义务）**：
+- 违反确定性 = 丢掉帧缓存与并行，重渲变慢——这是**物理代价**，不是道德代价
+- 违反可读性 = 观众可能读不到那句话
+- 门禁测试不知道你在自由模式：**提交前的绿灯仍要绿**，否则别人接不住你的代码（协作里的范围与 git 纪律保护的是共享状态，不是创作风格）
+- 想给队友解释你的选择时，规则里的术语（叠层、焦点、节奏）正好是现成的词汇表
+
+**怎么退出**：用户说回标准模式，或工作进入交付阶段（要发布、要别人接手）——此时按 `reference/teamwork.md` 的**自审清单**过一遍自由模式的产出：能修的修，修不了的在回报里标注「自由模式的刻意选择」，让接手的人知道哪些是有意为之。
+
+**Free mode: everything in this skill is reference, not a rule.** Rules 0–5, the eight-step workflow, interview-first, storyboard-first, contact-sheet review, palette discipline, the layering discipline, the rhythm rules, every pseudocode block, every command recipe and every numeric threshold may all be broken without justification. Enter by writing `mode: free` at the top of `storyboard.md` and declaring it in your report; exit when the user asks for standard mode or when the work reaches delivery — then run the self-review checklist from `reference/teamwork.md` over the result and annotate what was deliberately free, so whoever picks it up knows which choices were intentional.
+
 ## 工作流 (Workflow)
 
 八步工作流：**先问清楚** → 分镜；搭脚手架；逐镜头搭建；用联系表自检并读图判断；改了再查（联系表很便宜，秒级）；正式渲染；最后封装音频、核对时长与流、交付 MP4。
