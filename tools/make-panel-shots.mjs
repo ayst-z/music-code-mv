@@ -149,9 +149,11 @@ const PAGE = `<!doctype html><html lang="zh"><head><meta charset="utf-8">
     });
   })();
   if (typeof mod.apply !== 'function') throw new Error('client.js exports no apply()');
-  mod.apply(ctx);                                   // 注册字典 + 标题栏槽位
-  var entry = slots.filter(function (s) { return s.spec.name === 'conversation.session.header.utilities'; })[0];
-  if (!entry) throw new Error('titlebar slot not registered — client.js changed?');
+  mod.apply(ctx);                                   // 注册字典 + 对话视图环标签页
+  // 标题栏小按钮已按用户指示移除；唯一操作面是对话视图环里的标签页
+  var entry = slots.filter(function (s) { return s.spec.name === 'conversation.view'; })[0];
+  if (!entry) throw new Error('conversation.view slot not registered — client.js changed?');
+  var injected = typeof entry.spec.inject === 'function' ? (entry.spec.inject() || {}) : {};
 
   function mount(vnode, key, parent) {
     if (vnode === null || vnode === undefined || vnode === false || vnode === '') return null;
@@ -199,17 +201,14 @@ const PAGE = `<!doctype html><html lang="zh"><head><meta charset="utf-8">
     try {
       mount(window.React.createElement(entry.comp, {
         t: function (k) { return (DICT.zh[k] !== undefined ? DICT.zh[k] : k); },
-        ctx: ctx,
-        openStudio: function () { return 'tab'; },
-        openState: undefined
+        ctx: injected.ctx || ctx                     // spec.inject() 给的就是 ctx
       }), 'root', slot);
     } finally { cur.key = save.key; cur.idx = save.idx; }
   };
   window.__MM_RENDER__();
+  // 标签页直接就是主面板（无需点击）；两次重渲染让状态/预设效果落地
   setTimeout(function () {
-    window.__MM_RENDER__();                 // 让 fetch/状态效果落地
-    var btn = document.querySelector('[data-music-mv-entry]');
-    if (btn) btn.click();                   // 点开弹层
+    window.__MM_RENDER__();
     setTimeout(function () {
       window.__MM_RENDER__();
       document.title = 'ready';
