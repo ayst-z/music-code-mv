@@ -170,6 +170,37 @@ ok('侧栏离线分支带离线标记与交接按钮（data-sidebar-offline / HA
   SRC.includes("'data-sidebar-offline'") && SRC.includes("'fallback.handoff'") &&
   SRC.includes('onHandoff'), 'offline branch wired');
 
+// ---- 对话视图环：与对话/轨迹平级的「MV 工坊」标签页 / conversation.view ring ----
+const viewSlot = calls.slots.find((s) => s.spec.name === 'conversation.view');
+ok('注册进 conversation.view（与对话/轨迹平级的标签条）',
+  calls.slotsInject.includes('conversation.view') && !!viewSlot &&
+  viewSlot.spec.id === 'music-mv' && viewSlot.spec.order === 20 &&
+  viewSlot.spec.locale === 'musicCodeMv' && typeof viewSlot.spec.label === 'function',
+  viewSlot ? JSON.stringify({ id: viewSlot.spec.id, order: viewSlot.spec.order }) : 'missing');
+ok('标签文案走字典（fake 绑定恒等 → type.label；宿主侧解析为「MV 工坊」）',
+  !!viewSlot && viewSlot.spec.label() === 'type.label' &&
+  calls.dictionaries.dict.zh['type.label'] === 'MV 工坊',
+  viewSlot ? String(viewSlot.spec.label()) : 'missing');
+ok('视图注册把 ctx 交给组件（业务 share）',
+  !!viewSlot && typeof viewSlot.spec.inject === 'function' &&
+  viewSlot.spec.inject().ctx === ctx, 'ctx injected');
+const viewTree = viewSlot ? viewSlot.component({ t: popupT, ctx: ctx }) : null;
+const viewNodes = walkAll(viewTree);
+const viewRoot = viewNodes.find((n) => n.props && n.props['data-music-mv-popup'] === '1');
+ok('视图页 = 全幅管理界面（dshMvPage + dshMvBig，无锚定样式、无关闭/展开键）',
+  !!viewRoot && String(viewRoot.props.className).indexOf('dshMvPage') >= 0 &&
+  String(viewRoot.props.className).indexOf('dshMvBig') >= 0 &&
+  viewRoot.props.style === null &&
+  !viewNodes.some((n) => n.props && n.props['data-fs'] === '1') &&
+  !viewNodes.some((n) => n.props && n.props['aria-label'] === popupT('popup.close')),
+  viewRoot ? String(viewRoot.props.className) : 'missing');
+ok('视图页带完整功能：三区动作 + 预设区 + 页面模式 CSS',
+  viewNodes.filter((n) => n.props && n.props['data-act'])
+    .map((n) => n.props['data-act']).join(',') === 'teammate,render,styles,copy' &&
+  viewNodes.some((n) => n.props && n.props['data-music-mv-opts'] === '1') &&
+  SRC.includes('.dshMvPage{position:relative') && SRC.includes('.dshMvPopupBig,.dshMvPage{animation:dshMvBig'),
+  'full page panel');
+
 // ---- 标题栏右上角入口 / conversation-titlebar top-right entry ----
 const utilSlot = calls.slots.find(function (s) { return s.spec.name === 'conversation.session.header.utilities'; });
 ok('入口挂在 conversation.session.header.utilities 槽位', !!utilSlot,
@@ -390,13 +421,13 @@ ok('动画：开屏 / 切级 / 大窗 / 遮罩四段关键帧 + 悬停过渡 + �
   'motion + reduced-motion');
 ok('切级时主体重挂播放滑入动画（body key 跟面板走）',
   SRC.includes("key: 'body-' + panel"), 'panel remount');
-ok('大窗宽屏两栏排版 + 画廊升到 3/4 列（容器查询）',
+ok('大窗/页面宽屏两栏排版 + 画廊升到 3/4 列（容器查询，共享 dshMvBig）',
   SRC.includes('@container (min-width: 560px)') && SRC.includes('@container (min-width: 860px)') &&
-  SRC.includes('.dshMvPopupBig .dshMvBody{display:grid'), 'responsive big grid');
-ok('图片可读性：大窗展示图 112px / 风格条 96px / 缩略 88×50 / 预览整幅 contain；常态 56px 起步',
-  SRC.includes('.dshMvPopupBig .dshMvCardArt,.dshMvPopupBig .dshMvCardImg{height:112px;}') &&
-  SRC.includes('.dshMvPopupBig .dshMvStrip{height:96px;}') &&
-  SRC.includes('.dshMvPopupBig .dshMvThumb{width:88px;height:50px;}') &&
+  SRC.includes('.dshMvBig .dshMvBody{display:grid'), 'responsive big grid');
+ok('图片可读性：大窗/页面展示图 112px / 风格条 96px / 缩略 88×50 / 预览整幅 contain；常态 56px 起步',
+  SRC.includes('.dshMvBig .dshMvCardArt,.dshMvBig .dshMvCardImg{height:112px;}') &&
+  SRC.includes('.dshMvBig .dshMvStrip{height:96px;}') &&
+  SRC.includes('.dshMvBig .dshMvThumb{width:88px;height:50px;}') &&
   SRC.includes('max-height:52vh;object-fit:contain') &&
   SRC.includes('.dshMvCardArt{display:block;height:56px;'), 'readable images');
 ok('选项框对比度：实底背景 + 加粗边框 + option 同色 + 字段标签/分区标题提亮',
@@ -551,6 +582,9 @@ const fbCards = mod.__internals.styleCards(null, ['gpt', 'grok']);
 ok('离线退回内置清单（只有 id，无展示图）',
   fbCards.length === 2 && fbCards.every((c) => c.palette === null && c.title === ''),
   fbCards.map((c) => c.id).join(','));
+ok('离线卡片也显示中文名（不裸奔英文 id）',
+  fbCards.map((c) => c.label).join(',') === 'GPT 黑白,Grok 灰黑',
+  fbCards.map((c) => c.label).join(','));
 const gallery = walkAll(mod.__internals.styleGallery(popupT, cards, 'deepseek', function () {}));
 const galleryGrid = gallery.find((n) => n.props && n.props['data-gallery'] === '1');
 const cardBtns = gallery.filter((n) => n.props && n.props['data-style']);
@@ -565,7 +599,7 @@ ok('选中卡片高亮 + aria-pressed',
   onCard ? String(onCard.props.className) : 'missing');
 const showcaseMap = mod.__internals.showcase;
 const showcaseIds = Object.keys(showcaseMap);
-ok('展示图内嵌：preset 缩略以 data URI 落进客户端（256×144 WebP，离线可用、无需宿主路由）',
+ok('展示图内嵌：preset 缩略以 data URI 落进客户端（384×216 WebP，离线可用、无需宿主路由）',
   showcaseIds.length >= 16 && showcaseIds.includes('deepseek') && showcaseIds.includes('claude') &&
   showcaseIds.every((k) => showcaseMap[k].indexOf('data:image/webp;base64,') === 0),
   showcaseIds.length + ' images');
@@ -651,14 +685,28 @@ const strip = optsNodes.find((n) => n.props && n.props['data-showcase'] === 'str
 ok('预设区带选中风格的展示图（默认 deepseek → 内嵌真图）',
   !!strip && strip.type === 'img' && String(strip.props.src).indexOf('data:image/webp;base64,') === 0,
   strip ? String(strip.props.src).slice(0, 32) : 'missing');
+// 中文选项：风格下拉不裸奔英文 id（宿主 title 中文段 → 内置中文名兜底）
+const styleSelect = selects[1];
+const styleOpts = Array.isArray(styleSelect.props.children) ? styleSelect.props.children : [];
+ok('风格下拉是中文选项（内置中文名兜底，value 仍是英文 id）',
+  styleOpts.some((o) => o.props.value === 'deepseek' && o.props.children === 'DeepSeek 蓝黑') &&
+  styleOpts.some((o) => o.props.value === 'gpt' && o.props.children === 'GPT 黑白') &&
+  styleOpts.some((o) => o.props.value === 'ink-paper' && o.props.children === '纸墨'),
+  styleOpts.slice(0, 4).map((o) => o.props.children).join(' / '));
+ok('内置中文名表覆盖全部风格 + 取名规则（title 中文段 → 内置名 → id）',
+  Object.keys(mod.__internals.FALLBACK_STYLE_TITLES).length >= 17 &&
+  mod.__internals.styleLabel('claude', '') === 'Claude 橙白' &&
+  mod.__internals.styleLabel('x-new', '新风格 / New Style') === '新风格' &&
+  mod.__internals.styleLabel('unknown-id', '') === 'unknown-id',
+  Object.keys(mod.__internals.FALLBACK_STYLE_TITLES).length + ' titles');
 const fpsSelect = selects[2];
 const fpsValues = Array.isArray(fpsSelect.props.children) ? fpsSelect.props.children.map((o) => o.props.value) : [];
 ok('帧率第一项是「跟随工程」（没选就不写进提示词，不编造）',
   fpsValues[0] === '' && String(fpsSelect.props.children[0].props.children) === '跟随工程',
   fpsValues.join(','));
-ok('帧率档覆盖常用值（24/30/60/120），显示成「30 fps」',
+ok('帧率档覆盖常用值（24/30/60/120），显示成中文「30 帧/秒」',
   fpsValues.includes('30') && fpsValues.includes('60') && fpsValues.includes('120') &&
-  fpsSelect.props.children.some((o) => o.props.children === '30 fps'),
+  fpsSelect.props.children.some((o) => o.props.children === '30 帧/秒'),
   fpsValues.join(','));
 ok('清晰度档用宿主 RENDER_TIERS 的中文标题（内置兜底）',
   optsNodes.some((n) => n.type === 'option' && String(n.props.children).indexOf('480×270') >= 0) &&

@@ -1,0 +1,14 @@
+{
+  "id": "brand",
+  "title": "codeMV 品牌配音 / brand voice",
+  "note": "对外发布片的统一旁白嗓音。用法：node scripts/tts.mjs --brand --out=n/01.wav \"文本\"，或 --persona=<本文件>。只连回环地址的 DSH MiMo TTS 代理，不访问任何外部服务。与 fairy.persona.voice 同一套字段，优先级见 resolveVoice()：逐项覆盖 > --voice/--model/--voice-design > --persona.voice。",
+  "persona": {
+    "voice": {
+      "model": "mimo-v2.5-tts-voicedesign",
+      "voiceDesignPrompt": "生动明快的中文女声，科技品牌旁白：语调起伏大、情绪饱满有感染力，讲到亮点时带一点兴奋与笑意；节奏轻快有弹性，句尾收得干净利落；亲和、聪明、有表现力，像在向朋友展示一件很酷的作品；吐字清晰，不做播音腔、不拖沓、不喊叫。",
+      "fallbackVoice": "茉莉",
+      "lastResortVoice": "冰糖",
+      "note": "首选 voicedesign 固定品牌嗓音（不依赖内置音色名）；代理不可用时回退内置「茉莉」，再退「冰糖」。"
+    }
+  }
+}

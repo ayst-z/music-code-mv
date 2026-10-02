@@ -5,6 +5,7 @@
  *   node scripts/tts.mjs --probe                      # 查配音是否可用 / check availability
  *   node scripts/tts.mjs --out=narration/01.wav "文本"  # 合成一段 / synthesize one clip
  *   node scripts/tts.mjs --batch=narration.json        # 批量合成 / batch
+ *   node scripts/tts.mjs --brand --out=n/01.wav "文本"   # **品牌配音**：对外发布片统一嗓音
  *   node scripts/tts.mjs --persona=presets/fairy.json --out=x.wav "文本"   # 套用角色音色
  *   node scripts/tts.mjs --voice=茉莉 --out=x.wav "文本"                    # 内置音色
  *   node scripts/tts.mjs --voice-design="清甜灵动的少女音…" --out=x.wav "文本"  # 自定义音色
@@ -20,6 +21,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const DEFAULT_BASE = process.env.MIMO_TTS_BASE || 'http://127.0.0.1:19387';
 const SYNTH = '/plugins/xiaomi-mimo-tts/synthesize';
@@ -80,10 +82,19 @@ async function synth(text, outFile, voice) {
 
 /**
  * 音色解析优先级：逐项覆盖 > --voice/--model/--voice-design > --persona=<preset.json> 的 persona.voice。
+ * `--brand` 是快捷方式：等价于 --persona=<本脚本同级的 voices/brand.json>（品牌配音）。
  * Resolve the voice from explicit flags, or from a preset's persona.voice block.
  */
 function resolveVoice() {
-  const personaPath = arg('persona');
+  let personaPath = arg('persona');
+  if (!personaPath && has('brand')) {
+    // voices/ 与 scripts/ 是兄弟目录 / voices/ is a sibling of scripts/
+    const skillRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+    personaPath = path.join(skillRoot, 'voices', 'brand.json');
+    if (!fs.existsSync(personaPath)) {
+      throw new Error('--brand 需要 voices/brand.json / --brand needs voices/brand.json next to scripts/');
+    }
+  }
   let v = {};
   if (personaPath) {
     const p = JSON.parse(fs.readFileSync(personaPath, 'utf8'));

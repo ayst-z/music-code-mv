@@ -74,6 +74,15 @@ node_modules/ffmpeg-static/ffmpeg.exe -i n/01.wav                       # 量实
 **音色跟着角色走**：带 `persona` 的角色智能体（如 `fairy`）在 `persona.voice` 里定义音色（`voiceDesignPrompt` 自定义音色 + 内置音色回退），`--persona=` 一条命令套上；批量清单里逐项写 `voice` / `voiceDesignPrompt` 可以让同一支片里换角色说话。
 **The voice follows the character:** agent presets carry `persona.voice` (a `voiceDesignPrompt` plus built-in fallbacks); `--persona=` applies it, and per-item entries in a batch manifest switch characters within one film.
 
+**品牌配音 / brand voice**：对外发布片用统一嗓音，`--brand` 一条命令套上（读 `voices/brand.json`，与角色预设**同一套字段**，回退链 voicedesign → 茉莉 → 冰糖）：
+
+```bash
+node skills/music-code-mv/scripts/tts.mjs --brand --out=narration/01.wav "写好分镜，剩下的交给代码。"
+# voice: voicedesign ≈茉莉   实测 5.76s / 270KB，与角色旁白同规格，可进同一条混音链
+```
+
+For published films use one consistent voice: `--brand` reads `voices/brand.json` (same field shape as a character preset, falling back voicedesign → 茉莉 → 冰糖).
+
 拿到各段时长后按下表排时间线，再用 `adelay=<ms>:all=1` 把每段摆到它的镜头起点、`amix=inputs=N:normalize=0` 合成一条 `track.wav`（`apad=whole_dur=<总长>` 补齐），最后 `--audio=narration/track.wav` 交给渲染器封装，`-shortest` 保证音画同长。
 
 `--probe` 会把失败原因说清楚：`NOT READY` 后面跟着「没配 API Key」（去 设置 → 插件 → dsh-xiaomi-tts 存一个 Key）、「DSH 没开/端口不对」或「上游没回音频」。**不要**在没 probe 的情况下假设配音可用，也不要拿 TTS 失败当静音片交差——先问用户。
