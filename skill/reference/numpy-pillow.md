@@ -52,15 +52,20 @@ def shot_at(t, env):     # 可选：给联系表标注镜头名（也接受 shot
 ## 命令 (Commands)
 
 ```bash
-# 任何带 numpy + Pillow 的 Python 3.10+；本工作区用 load_workspace_dependencies 给的 python
+# 任何带 numpy + Pillow 的 Python 3.10+；本工作区 PATH 上的裸 python 没有它们，
+# 要用 DSH 自带的 <python>（numpy + Pillow 已备），并先设 PYTHONIOENCODING=utf-8 避免中文乱码
 python scripts/render-np.py --init=my-mv-np [--preset=claude]   # 脚手架
 python scripts/render-np.py --project=my-mv-np --contact        # 联系表（自检）
-python scripts/render-np.py --project=my-mv-np --stills=0,3,8   # 指定时刻单帧
+python scripts/render-np.py --project=my-mv-np --stills=0,3,8   # 指定时刻单帧 → out/still-0.00s.png
 python scripts/render-np.py --project=my-mv-np --out=out/video.mp4 --audio=track.mp3
 python scripts/render-np.py --project=my-mv-np --out=out/video.mp4 --workers=8  # 多进程补帧
 ```
 
-`--preset=` 接 `presets/*.json`（与 Chrome 引擎同一批预设：`claude`、`deepseek`、`gpt`、`neon-rain`…）。`--out=` 成功后自动打印核验行：`Duration` 与视频流（编码/像素格式/分辨率/帧率）。改完预设跑配色纪律测试：`python scripts/audit-presets.py`（16 项检查，exit 1 即有违规）。
+`--preset=` 接 `presets/*.json`（与 Chrome 引擎同一批预设：`claude`、`deepseek`、`gpt`、`neon-rain`…）。`--out=` 成功后自动打印核验行：`Duration` 与视频流（编码/像素格式/分辨率/帧率）。改完预设跑配色纪律测试：`python scripts/audit-presets.py`（R1–R4 四条规则加 `three.roles` 结构检查，exit 1 即有违规）。
+
+**路径解析的不对称（实测）：** `--out=` 相对**工程目录**，`--audio=` 相对**进程当前目录**；从别处启动就要给 `--audio=` 全路径，否则 ffmpeg 报 `Error opening input file`。本引擎也**没有** `--w/--h/--fps/--dur` 覆盖，尺寸只由 `project.json` 决定。本引擎没有 `--gl/--encoder/--depth` 这些 Chrome 引擎的开关，编码固定 `libx264 -preset medium -crf 17`。
+
+**And the scaffold applies only `palette`/`duration` (+ storyboard and lyrics) from a preset** — copy `fx` into `project.json` yourself, or light presets blow out under the default `bloom: true`.
 
 ## 确定性 (Determinism)
 
@@ -73,9 +78,9 @@ python scripts/render-np.py --project=my-mv-np --out=out/video.mp4 --workers=8  
 
 ## 逐帧渲染 (Frame-by-frame rendering)
 
-帧写成 `frames/f00000.png`（五位序号，与 Chrome 引擎一致）；已存在的帧直接跳过，所以长渲染天然可断点续跑，`--force` 全部重来。编码：
+帧写成 `frames/f00000.png`（五位序号；Chrome 引擎序号一致，但默认帧容器是 jpeg，即 `f00000.jpg`）；已存在的帧直接跳过，所以长渲染天然可断点续跑，`--force` 全部重来。编码：
 
-Frames go to `frames/f%05d.png`; existing frames are skipped, so long renders resume for free (`--force` to redo):
+Frames go to `frames/f%05d.png` (five-digit; the Chrome engine uses the same numbering but defaults to `f%05d.jpg`); existing frames are skipped, so long renders resume for free (`--force` to redo). Encoding:
 
 ```
 ffmpeg -framerate <fps> -start_number 0 -i frames/f%05d.png \
@@ -87,7 +92,7 @@ ffmpeg -framerate <fps> -start_number 0 -i frames/f%05d.png \
 
 ## 帧缓存签名 (Cache signature)
 
-引擎启动时把 `project.json` + `src/render.py` 的 sha1 存进 `frames/.signature`；不匹配就**自动清空帧缓存重渲**——改工程不再需要 `--force` 手动清（与 Chrome 引擎的 `signature.mjs` 同构）。`--force` 仍保留用于强制重渲同一份工程。
+引擎启动时把 `project.json` + `src/render.py` 的 sha1 存进 `frames/.signature`；不匹配就**自动清空帧缓存重渲**（日志 `signature changed: cleared N cached frames`）——改工程不再需要 `--force` 手动清（与 Chrome 引擎的 `signature.mjs` 同构）。`--force` 仍保留用于强制重渲同一份工程。注意这条链路里 `ensure_signature` 是**每次运行都会跑**的，所以「文件在就复用」只在签名一致时成立。
 
 At startup the engine hashes `project.json` + `src/render.py` into `frames/.signature`; a mismatch clears the cache automatically — no manual `--force` after edits.
 

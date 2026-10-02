@@ -5,7 +5,12 @@
  *   node scripts/tts.mjs --probe                      # 查配音是否可用 / check availability
  *   node scripts/tts.mjs --out=narration/01.wav "文本"  # 合成一段 / synthesize one clip
  *   node scripts/tts.mjs --batch=narration.json        # 批量合成 / batch
- *   node scripts/tts.mjs --base=http://127.0.0.1:19387 --out=... "文本"
+ *   node scripts/tts.mjs --persona=presets/fairy.json --out=x.wav "文本"   # 套用角色音色
+ *   node scripts/tts.mjs --voice=茉莉 --out=x.wav "文本"                    # 内置音色
+ *   node scripts/tts.mjs --voice-design="清甜灵动的少女音…" --out=x.wav "文本"  # 自定义音色
+ *
+ * 音色优先级：逐项覆盖 > --voice/--model/--voice-design > --persona=<preset>.persona.voice。
+ * 音色模型 mimo-v2.5-tts-voicedesign 走 voiceDesignPrompt；内置音色走 --voice。
  *
  * 批量清单格式 / batch manifest:
  *   [{ "file": "narration/01.wav", "text": "第一段旁白" }, ...]
@@ -55,11 +60,15 @@ async function probe() {
   }
 }
 
-async function synth(text, outFile) {
+async function synth(text, outFile, voice) {
+  const body = { text, format: 'wav' };
+  if (voice && voice.model) body.model = voice.model;
+  if (voice && voice.voice) body.voice = voice.voice;
+  if (voice && voice.voiceDesignPrompt) body.voiceDesignPrompt = voice.voiceDesignPrompt;
   const res = await fetch(BASE + SYNTH, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ text, format: 'wav' })
+    body: JSON.stringify(body)
   });
   if (!res.ok) throw new Error(explain(res.status, await res.text()));
   const buf = Buffer.from(await res.arrayBuffer());
@@ -67,6 +76,34 @@ async function synth(text, outFile) {
   fs.mkdirSync(path.dirname(path.resolve(outFile)), { recursive: true });
   fs.writeFileSync(outFile, buf);
   return buf.length;
+}
+
+/**
+ * 音色解析优先级：逐项覆盖 > --voice/--model/--voice-design > --persona=<preset.json> 的 persona.voice。
+ * Resolve the voice from explicit flags, or from a preset's persona.voice block.
+ */
+function resolveVoice() {
+  const personaPath = arg('persona');
+  let v = {};
+  if (personaPath) {
+    const p = JSON.parse(fs.readFileSync(personaPath, 'utf8'));
+    const pv = (p && p.persona && p.persona.voice) || null;
+    if (!pv) throw new Error('persona 里没有 voice 块 / no persona.voice in ' + personaPath);
+    v = { model: pv.model, voice: pv.voice || pv.fallbackVoice, voiceDesignPrompt: pv.voiceDesignPrompt };
+  }
+  if (arg('model')) v.model = arg('model');
+  if (arg('voice')) v.voice = arg('voice');
+  if (arg('voice-design')) {
+    v.model = 'mimo-v2.5-tts-voicedesign';
+    v.voiceDesignPrompt = arg('voice-design');
+  }
+  return v;
+}
+
+function voiceLabel(v) {
+  if (!v || (!v.model && !v.voice && !v.voiceDesignPrompt)) return '默认音色 / default voice';
+  if (v.voiceDesignPrompt) return 'voicedesign ' + (v.voice ? '≈' + v.voice : '');
+  return (v.model || 'mimo-v2.5-tts') + ' · ' + (v.voice || '');
 }
 
 const OUT = arg('out');
@@ -87,13 +124,20 @@ if (arg('batch')) {
     console.error('清单必须是非空数组 / manifest must be a non-empty array');
     process.exit(1);
   }
+  const base = resolveVoice();
+  console.log('voice: ' + voiceLabel(base));
   let total = 0;
   for (const item of manifest) {
     if (!item || typeof item.file !== 'string' || typeof item.text !== 'string') {
       console.error('每一项都要有 file 与 text / each item needs file and text');
       process.exit(1);
     }
-    const n = await synth(item.text, item.file);
+    // 逐项可覆盖音色（同一支片里换角色说话）/ per-item override lets one clip switch character
+    const v = Object.assign({}, base,
+      item.model ? { model: item.model } : {},
+      item.voice ? { voice: item.voice } : {},
+      item.voiceDesignPrompt ? { voiceDesignPrompt: item.voiceDesignPrompt } : {});
+    const n = await synth(item.text, item.file, v);
     total += n;
     console.log(item.file + '  ' + n + ' bytes');
   }
@@ -103,5 +147,7 @@ if (arg('batch')) {
 
 const text = process.argv.slice(2).filter((a) => !a.startsWith('--')).join(' ').trim();
 if (!text) { console.error('没有文本可合成 / nothing to synthesize'); process.exit(1); }
-const n = await synth(text, OUT);
+const oneVoice = resolveVoice();
+console.log('voice: ' + voiceLabel(oneVoice));
+const n = await synth(text, OUT, oneVoice);
 console.log(OUT + '  ' + n + ' bytes');

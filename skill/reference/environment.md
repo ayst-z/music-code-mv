@@ -6,7 +6,7 @@
 |---|---|---|
 | Node.js ≥ 18 | 跑渲染器 | ESM (`"type": "module"`) |
 | Google Chrome or Edge | 画帧 | 无头即可；软件 WebGL 够用 |
-| ffmpeg | 帧 → MP4、封装音频 | 任意较新的构建 |
+| ffmpeg | 帧 → MP4、封装音频 | 任意较新的构建；**只带 `ffmpeg.exe`，没有 `ffprobe`**——量时长用 `ffmpeg -i <file>`（会打印 `Duration`，退出码 1 属正常） |
 | `three` | 可选，3D 镜头 | npm |
 | `puppeteer-core` | 驱动 Chrome | npm；不下载 Chromium |
 
@@ -14,7 +14,7 @@
 |---|---|---|
 | Node.js ≥ 18 | runs the renderer | ESM (`"type": "module"`) |
 | Google Chrome or Edge | draws the frames | headless; software WebGL is fine |
-| ffmpeg | frames → MP4, audio mux | any recent build |
+| ffmpeg | frames → MP4, audio mux | any recent build; **ships `ffmpeg.exe` only — no `ffprobe`**, so measure durations with `ffmpeg -i <file>` (exit code 1 is expected) |
 | `three` | optional, 3D shots | npm |
 | `puppeteer-core` | drives Chrome | npm; no Chromium download |
 
@@ -50,21 +50,15 @@ npm install @ffmpeg-installer/ffmpeg   # ships the binary as a package, no scrip
 
 ## 定位可执行文件 (Locating binaries)
 
-`probe.mjs` 按顺序搜索：
+`probe.mjs` 的真实查找顺序（读自脚本）：
 
-- `%ProgramFiles%`、`%ProgramFiles(x86)%`、`%LOCALAPPDATA%` 下的 Chrome / Edge
-- `CHROME_PATH` 环境变量
-- ffmpeg：`node_modules/ffmpeg-static/ffmpeg.exe`、`node_modules/@ffmpeg-installer/win32-x64/ffmpeg.exe`，最后是 `PATH`
+- Chrome / Edge：先看 `CHROME_PATH`、`CHROME_BIN` 两个环境变量，再看 `%ProgramFiles%`、`%ProgramFiles(x86)%`、`%LOCALAPPDATA%` 下的 Chrome，然后是 Edge，最后是 Linux/macOS 的常见路径
+- ffmpeg：先看 `FFMPEG_PATH`，再逐层向上找 `node_modules/ffmpeg-static/ffmpeg.exe`、`node_modules/@ffmpeg-installer/win32-x64/ffmpeg.exe`——**`probe.mjs` 到这里就结束了，不回退 `PATH`**；`render.mjs` 才会再试 `--ffmpeg=` 与 `PATH`
+- `node_modules`：从项目目录（或 cwd）向上最多找 10 层
 
-用 `--chrome=<path>` 或 `--ffmpeg=<path>` 覆盖。
+**`probe.mjs` 不接受 `--chrome=` / `--ffmpeg=`**（它只吃一个位置参数：项目目录）；要覆盖请设上面三个环境变量，或者在 `render.mjs` 上传 `--chrome=<path>` / `--ffmpeg=<path>`（`render.mjs` 从工程目录、cwd、脚本自身目录三处向上找 `node_modules`，找不到才回退 `PATH`）。
 
-`probe.mjs` searches, in order:
-
-- Chrome / Edge in `%ProgramFiles%`, `%ProgramFiles(x86)%`, `%LOCALAPPDATA%`
-- `CHROME_PATH` environment variable
-- ffmpeg at `node_modules/ffmpeg-static/ffmpeg.exe`, `node_modules/@ffmpeg-installer/win32-x64/ffmpeg.exe`, then `PATH`
-
-Override with `--chrome=<path>` or `--ffmpeg=<path>`.
+The real search order: `CHROME_PATH`/`CHROME_BIN` first, then Program Files / LocalAppData Chrome, Edge and the usual Linux/macOS paths; `FFMPEG_PATH` first, then the `node_modules` candidates — and `probe.mjs` stops there with **no `PATH` fallback**, while `render.mjs` additionally honours `--ffmpeg=` and finally `PATH`. `probe.mjs` takes no `--chrome=`/`--ffmpeg=` flags — set the environment variables, or pass those flags to `render.mjs`.
 
 ## 平台注意事项 (Platform notes)
 
@@ -79,7 +73,8 @@ Override with `--chrome=<path>` or `--ffmpeg=<path>`.
 ## 验证 (Verifying)
 
 ```bash
-node scripts/probe.mjs
+node skills/music-code-mv/scripts/probe.mjs        # 从工作区根目录跑
+node scripts/probe.mjs                             # 从 skill 目录跑
 ```
 
 会打印 Node/Chrome/ffmpeg 路径与版本、软件 WebGL 是否可用，以及 `READY` 或具体缺了哪一项。

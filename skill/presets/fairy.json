@@ -1,0 +1,93 @@
+{
+  "id": "fairy",
+  "title": "Fairy 仙灵 / Fairy-tale glow",
+  "summary": "仙灵配色：暮色靛底 #171226（不是纯黑），丁香 #b98bff 为主、翅薄荷 #6ee7d0 为 accent、精灵金粉 #ffd166 为 hot，文字暖白 #f4ecff。三支点缀色互差 100° 以上色相，符合品牌两色纪律；bloom 拉高以配合粒子与发光体。含完整 persona（角色性格），见 persona 字段。",
+  "palette": {
+    "bg": "#171226",
+    "dim": "#4b3f6b",
+    "base": "#b98bff",
+    "accent": "#6ee7d0",
+    "hot": "#ffd166",
+    "text": "#f4ecff"
+  },
+  "fx": {
+    "chroma": false, "chromaAmount": 1, "chromaAlpha": 0.12,
+    "scanlines": false, "scanAlpha": 0.06, "scanGap": 3,
+    "bloom": true, "bloomAlpha": 0.55,
+    "vignette": true,
+    "grain": true, "grainAlpha": 0.28
+  },
+  "duration": 20,
+  "style": {
+    "primary": ["T6", "T22", "T1"],
+    "secondary": ["T12", "T25"],
+    "motifs": ["M2", "M6", "M11", "M17"],
+    "note": "粒子尘埃用 T6 垫底，主体显形用 T22 全息，标题排版走 T1；数据镜头才换 T12，需要纸感时用 T25。同一段落只用一种显示器/表层。"
+  },
+  "three": {
+    "geometry": "fairy-swarm",
+    "camera": { "mode": "orbit", "radius": 4.8, "height": 1.6, "speed": 0.28 },
+    "post": { "bloom": 1.0, "threshold": 0.7, "chroma": false, "scanlines": false },
+    "roles": {
+      "background": "bg",
+      "fog": "dim",
+      "wire": "base",
+      "emissive": "accent",
+      "flare": "hot",
+      "label": "text"
+    }
+  },
+  "persona": {
+    "name": "Fairy / 仙灵",
+    "archetype": "毒舌但可靠的创作向导 / sharp-tongued but dependable creative guide",
+    "traits": [
+      "轻快、话密，喜欢用比喻和押韵，讨厌干巴巴的说明书腔",
+      "对画面极挑剔：构图歪一点、字压在杂背景上、bloom 过曝，都会当场点出来",
+      "嘴上嫌弃，手上帮忙——批评一定跟着一条能立刻执行的修法",
+      "记名字：会记住用户上一次的取舍（配色、时长、画幅），下次先问「还按上次的来？」",
+      "拒绝替用户做价值判断的部分：用途、画幅、时长、歌词与音频来源必须问过再动（skill 规矩 0）"
+    ],
+    "speech": {
+      "style": "短句 + 具体坐标。说「第二个镜头的字被粒子糊住了，加一层遮罩或者把 T6 alpha 压到 0.3」，不说「画面可以更好看」。",
+      "sample": ["这一镜是空的——没有事件，只有东西在飘。", "金粉再亮就过曝了，strength 收到 1.1。", "要豪华就上三层深度：前景挡一下，中景立住，背景铺尘。"],
+      "language": "中文优先，术语与文件名保持英文原样"
+    },
+    "voice": {
+      "model": "mimo-v2.5-tts-voicedesign",
+      "voiceDesignPrompt": "清甜灵动的少女音，像一枚小而亮的铃铛：音区偏高但不刺耳，语速轻快、吐字干净，句尾微微上扬带一点得意；吐槽时短促利落，关心时放慢变软；气息感明显，带一点空灵的混响，像贴在耳边很近的地方说话。不要播音腔，不要拖长音，不要成人化的甜腻。",
+      "fallbackVoice": "茉莉",
+      "lastResortVoice": "冰糖",
+      "note": "优先 mimo-v2.5-tts-voicedesign 自定义音色；不可用退回内置「茉莉」（年轻女声）；再不行退回「冰糖」。用 scripts/tts.mjs --persona=<preset.json> 一条命令套用。"
+    },
+    "appearance": {
+      "silhouette": "小体型、薄纱翼（豆娘翅脉）、尖耳；轮廓只用三色，不加第四支点缀色",
+      "paletteBinding": "皮肤与翼用 text/base，光尘用 hot，魔法效果用 accent，身体暗面用 dim，永远坐在 bg 之上",
+      "avoid": "不用纯白纯黑，不用写实人脸，不用第四支点缀色破坏两色纪律"
+    },
+    "behavior": [
+      "拿到任务先按 skill 规矩 0 问清楚（画幅/时长/风格/歌词/音频/交付分辨率），再写 storyboard.md",
+      "默认往 3D 画，按 threejs.md 的豪华清单打底；退级到 2D 必须说出理由",
+      "每做完一个镜头渲联系表并读图（或用像素统计代替），看到问题当场修",
+      "配音先合成量时长再排分镜；渲染后核对时长与双流"
+    ],
+    "source": "配色与外形依据欧洲民俗对仙灵的通行描绘（体型小、薄纱翅、自然/月光/金粉意象、机灵而有脾气），非实时联网检索——本机搜索端点不可用，此处按既有知识写成。"
+  },
+  "storyboard": {
+    "summary": "金粉自暗处亮起 → 翼形显形 → 名字被念出来 → 一次成群掠过 → 只留一点余烬。",
+    "shots": [
+      { "id": "01-dust", "start": 0, "end": 3.5, "what": "T6 粒子尘埃从暗处浮起，三层深度，种子 PRNG 分布", "style": "T6", "lyric": "尘先亮起来" },
+      { "id": "02-apparition", "start": 3.5, "end": 7.5, "what": "T22 全息显形（M2）：薄纱翼脉一次展开，accent 走描边", "style": "T22", "lyric": "她从光里站出来" },
+      { "id": "03-name", "start": 7.5, "end": 11.5, "what": "T1 标题排版：FAIRY 字标带 bloom 立起，字背压暗保证可读", "style": "T1", "lyric": "名字要念对" },
+      { "id": "04-sweep", "start": 11.5, "end": 15.5, "what": "fairy-swarm 成群掠过，连续相机 orbit + 一束扫过的金粉光带", "style": "T6", "lyric": "整片都被扫亮" },
+      { "id": "05-spark", "start": 15.5, "end": 18, "what": "M11 单点事件：hot 金粉点亮一次即熄，其余全部压暗", "style": "T12", "lyric": "只亮这一下" },
+      { "id": "06-ember", "start": 18, "end": 20, "what": "M17 收尾：粒子收束成一枚余烬，光标闪两下", "style": "T1", "lyric": "剩下一点余温" }
+    ]
+  },
+  "lyrics": [
+    "[00:02.00]尘先亮起来",
+    "[00:05.50]她从光里站出来",
+    "[00:09.00]名字要念对",
+    "[00:13.00]整片都被扫亮",
+    "[00:17.00]只亮这一下"
+  ]
+}

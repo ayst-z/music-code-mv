@@ -87,19 +87,23 @@ For Canvas2D you can skip Chrome entirely with `node-canvas`, but Canvas2D-in-Ch
 
 ## 编码 (Encoding)
 
+`render.mjs` 实际拼出来的命令（默认帧容器是 **jpeg**、`-preset medium -crf 17`；`--format=png` 才是 png）：
+
+What `render.mjs` actually runs (the default frame container is **jpeg**, preset `medium`, crf 17; `--format=png` switches to png):
+
 ```
-ffmpeg -y -framerate <fps> -i frames/f%04d.png \
-  -c:v libx264 -preset slow -crf 17 -pix_fmt yuv420p \
-  -vf scale=trunc(iw/2)*2:trunc(ih/2)*2 -movflags +faststart out.mp4
+ffmpeg -y -framerate <fps> -start_number <first-frame> -i frames/f%05d.jpg \
+  -c:v libx264 -preset medium -crf 17 -pix_fmt yuv420p \
+  -vf scale=trunc(iw/2)*2:trunc(ih/2)*2 -frames:v <n> -movflags +faststart out.mp4
 ```
 
-- `yuv420p` + 偶数尺寸 = 到处都能播。宽或高为奇数会静默失败。
+- `yuv420p` + 偶数尺寸 = 到处都能播。宽或高为奇数会静默失败（`scale=trunc(iw/2)*2` 已经替你取偶）。
 - 对合成图形来说 `crf 17–18` 视觉上已无损；`+faststart` 让它可以流式播放。
-- 封装音频时加 `-c:a aac -b:a 192k -shortest`，音频作为第二个输入，并加 `-c:v copy`。
+- 封装音频时音频作为**第二输入**并 `-map 0:v:0 -map 1:a:0 -c:a aac -b:a 192k -shortest`——注意这是**同一次编码里带上音轨**，所以没有也不该有 `-c:v copy`（那句只适用于「视频已经成片、单独补音轨」的场景）。
 
-- `yuv420p` + even dimensions = plays everywhere. Odd width/height silently fails.
+- `yuv420p` + even dimensions = plays everywhere; odd width/height silently fails.
 - `crf 17–18` is visually lossless for synthetic graphics; `+faststart` makes it stream.
-- Add `-c:a aac -b:a 192k -shortest` when muxing audio, with the audio as the second input and `-c:v copy`.
+- When muxing audio, the audio is a **second input** with `-map 0:v:0 -map 1:a:0 -c:a aac -b:a 192k -shortest` — this is one encode that carries the audio, so `-c:v copy` does not apply (that is for slapping audio onto an already-finished video).
 
 ## GPU 加速 (GPU acceleration)
 
@@ -113,7 +117,7 @@ ffmpeg -y -framerate <fps> -i frames/f%04d.png \
 
 本机实测：`gpu (hardware GL)  ANGLE (Intel(R) Arc(TM) Graphics … Direct3D11)` · `encoder (live test)  HARDWARE  Intel QSV AV1  (test frame encoded)`。
 
-- **画 / render**：`--gl=gpu`（默认）自动带上 `--use-gl=angle --use-angle=d3d11 --ignore-gpu-blocklist --enable-gpu-rasterization --enable-zero-copy`；`--gl=soft` 强制 SwiftShader；`gl=auto` 检出空帧会自动回退到软渲并说明。Three.js/WebGL 镜头天然走 GPU。
+- **画 / render**：`--gl=auto`（默认）先按硬件参数起 Chrome（`--use-gl=angle --use-angle=d3d11 --ignore-gpu-blocklist --enable-gpu-rasterization --enable-zero-copy`），渲 t=0 一帧做空帧体检，**检出空帧就自动回退软渲并说明**；`--gl=gpu` 强制硬件（不做体检）、`--gl=soft` 强制 SwiftShader。Three.js/WebGL 镜头天然走 GPU。
 - **编 / encode**：`--encoder=auto`（默认）按 `qsv > nvenc > amf > x264` 挑，**每个候选都先真编一帧（256×144，几十毫秒）再上场**，全失败才回软件 x264。
 - **为什么必须真编一帧**：ffmpeg 静态构建经常把 `qsv`/`nvenc`/`amf` 一起编进去，但机器上未必有那块卡。只查 `-encoders` 会选中 `h264_nvenc`，然后在最后一步整体失败（`Cannot load nvcuda.dll`）。实测本机：三个 QSV 可用，`h264_nvenc` 报 `Cannot load nvcuda.dll`、`h264_amf` 报 `amfrt64.dll failed to open`。
 - **探针尺寸别太小**：QSV 的 AV1/HEVC 在部分 Intel 卡上有最小分辨率，64×64 会报 `Current resolution is unsupported`——那是探针太小，不是编码器坏（256×144 才是安全值）。
@@ -167,6 +171,6 @@ Ordered by leverage:
 
 ## 帧缓存与续渲 (Frame cache and resume)
 
-帧写成 `frames/f0000.png`。渲染之前，只要某个帧文件已经存在就跳过，除非加了 `--force`。这让长渲染可以断点续跑，也让半成品渲染可以用 `--contact` 检查。
+帧写成 `frames/f00000.jpg`（**五位序号**；`--format=png` 时是 `f00000.png`）。复用的条件不是「文件在」，而是**文件在且渲染签名没变**——签名 = 宽 / 高 / fps / 时长 / 引擎 / 画质 + 每个镜头声明的 `deps`（`src/scenes/` 的改动经 `deps` 收窄影响面）。所以：只改 `--out` / `--audio` / `--workers` 照旧复用；改分辨率则整轮重渲（实测 `0 rendered, 60 reused` vs `60 rendered, 0 reused`）。`--force` 忽略签名全部重来，`--clean` 在编码后清空 `frames/`。联系表与静帧写进 `.cache/`，不参与帧缓存。
 
-Frames are written as `frames/f0000.png`. Before rendering, skip any frame whose file already exists unless `--force`. This makes long renders resumable and lets a partial render be inspected with `--contact`.
+Frames are written as `frames/f00000.jpg` (**five-digit** index; `f00000.png` with `--format=png`). A frame is reused only when the file exists **and** its render signature still matches — signature = width / height / fps / duration / engine / quality plus each scene's `deps`. Changing only `--out`/`--audio`/`--workers` keeps the cache; changing the resolution re-renders everything. `--force` ignores signatures, `--clean` purges `frames/` after encoding. Contact sheets and stills go to `.cache/` and never touch the frame cache.

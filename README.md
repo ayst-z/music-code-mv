@@ -248,8 +248,8 @@ Every path resolves inside the workspace root and `..` escapes are rejected with
 
 ## 预设 / Presets
 
-16 个开箱即用的预设：一条命令拿到配色、后期、时长、分镜与占位歌词，生成即可渲染。**4 个氛围预设 + 12 个主流 AI 模型品牌配色**（品牌色取自官网 CSS 与官方 logo SVG），下面是全部 16 个的实拍联系表。
-16 ready-to-use presets: one command yields palette, post-processing, duration, storyboard and placeholder lyrics. **Four mood presets plus twelve mainstream AI-model brand palettes** (pulled from official CSS and logo SVGs); below are real renders of all sixteen.
+17 个开箱即用的预设：一条命令拿到配色、后期、时长、分镜与占位歌词，生成即可渲染。**4 个氛围 + 12 个主流 AI 模型品牌配色 + 1 个角色智能体**（品牌色取自官网 CSS 与官方 logo SVG），下面是全部的实拍联系表。
+17 ready-to-use presets: one command yields palette, post-processing, duration, storyboard and placeholder lyrics. **Four mood presets, twelve mainstream AI-model brand palettes and one character agent** (brand colours pulled from official CSS and logo SVGs); below are real renders of all of them.
 
 | `claude` 橙白 | `deepseek` 蓝黑 | `doubao` 蓝橙 | `dusk-lofi` 落日低保真 |
 |---|---|---|---|
@@ -260,6 +260,12 @@ Every path resolves inside the workspace root and `..` escapes are rejected with
 | ![kimi](skill/reference/img/preset-kimi.png) | ![llama](skill/reference/img/preset-llama.png) | ![midjourney](skill/reference/img/preset-midjourney.png) | ![mistral](skill/reference/img/preset-mistral.png) |
 | `neon-rain` 霓虹雨夜 | `phosphor` 磷光终端 | `qwen` 紫 | `zhipu` 智谱 三色 |
 | ![neon-rain](skill/reference/img/preset-neon-rain.png) | ![phosphor](skill/reference/img/preset-phosphor.png) | ![qwen](skill/reference/img/preset-qwen.png) | ![zhipu](skill/reference/img/preset-zhipu.png) |
+
+**角色智能体预设 / character agent preset** —— 配色 + 风格 + 性格一次配齐，既是色表也是一位能对话的创作伙伴（`persona` 字段写死特质、说话方式、外形约束与工作规矩）：
+
+| `fairy` 仙灵 / Fairy |
+|---|
+| ![fairy](skill/reference/img/preset-fairy.png) |
 
 ```bash
 node skill/scripts/init.mjs my-mv --preset=deepseek  # 套用预设 / apply a preset
@@ -295,6 +301,33 @@ node skill/scripts/render.mjs --project=feature-demo --out=out/video.mp4 \
 ```
 
 机器自检会把三处分开报：`webgl`（能力门）、`gpu (hardware GL)`（实际在用的显卡）、`encoder (live test)`（真编一帧后的编码器）。详见 [skill/reference/techniques.md](skill/reference/techniques.md) 的 GPU 加速一节。The probe reports WebGL capability, the GPU actually in use, and the encoder after a real test frame — see the GPU section in `techniques.md`.
+
+---
+
+## 3D 能力展示 / 3D capability showcase
+
+`showcase-3d` 是一支**全 3D** 的 31 秒短片，用新的 `fairy` 预设配色，按 `reference/threejs.md` 的**豪华场面清单**逐条打底——共享渲染器 + `EffectComposer` + `UnrealBloom`，2D 只负责排版与收边（`fx: FX3D` 关掉重复的 bloom/色差/扫描线）：
+
+Six shots, all WebGL: **①** 30k-particle nebula with an expanding shock ring → **②** 120 instanced emissive pillars over a mirrored floor, lit wave sweeping through → **③** a glowing ring tunnel with a gate flash → **④** a metallic knot with two sweeping lights → **⑤** seven halos snapping into alignment under a crisp `codeMV` title → **⑥** 24k particles collapsing to an ember, then a clean power-off.
+
+| # | 镜头 / shot | 事件 / the one event |
+|---|---|---|
+| 1 | 粒子星云 swarm | 金色冲击环从中心扩出 |
+| 2 | 发光柱林 pillars | 点亮波沿 z 推进，柱子逐根亮起 |
+| 3 | 发光隧道 tunnel | 相机穿过的门环炸亮 |
+| 4 | 金属结 knot | 高光扫过表面 |
+| 5 | 光环阵 halo | 七环对齐到同一平面 |
+| 6 | 坍缩 collapse | 塌成一点余烬 → 关机 |
+
+<video src="skill/reference/video/showcase-3d-preview.mp4" controls width="720" muted></video>
+
+[下载 / download the 3D clip](skill/reference/video/showcase-3d-preview.mp4)
+
+3D 联系表 / storyboard contact sheet:
+
+![3D showcase](skill/reference/img/showcase-3d.png)
+
+**实测性能 / measured performance**：`930 帧 720p → 17.3s`（8 workers，约 54 fps 吞吐、18.5 ms/帧），编码器日志自动带 `[hardware verified — test frame encoded]`。同一分辨率下 Canvas2D 全 FX 约 255 ms/帧——**走硬件 GL 的 3D 反而更快**，因为 `FX3D` 把重复的2D 后期关掉了，辉光在 GPU 上由 UnrealBloom 一次做完。`930 frames of 720p in 17.3s` (8 workers, ~54 fps, 18.5 ms/frame) versus ~255 ms/frame for Canvas2D with the full 2D FX chain — hardware-GL 3D is the *faster* path here, not the expensive one.
 
 ---
 

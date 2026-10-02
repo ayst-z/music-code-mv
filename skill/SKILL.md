@@ -40,10 +40,10 @@ The agent acts as **director + renderer**: storyboard first, build shot by shot,
 1. brief      → storyboard.md (shots + seconds + lyric cues + palette)
 2. scaffold   → node skills/music-code-mv/scripts/init.mjs <project-dir> [--preset=<id>]
 3. build      → one scene module per shot in src/scenes/
-4. check      → node scripts/render.mjs --project=<dir> --contact
+4. check      → node skills/music-code-mv/scripts/render.mjs --project=<dir> --contact
                  then read the sheet PNG and judge it
 5. iterate    → fix, re-check (contact sheets are cheap: seconds)
-6. render     → node scripts/render.mjs --project=<dir> --out=out/video.mp4
+6. render     → node skills/music-code-mv/scripts/render.mjs --project=<dir> --out=out/video.mp4
 7. finish     → mux audio, verify duration/streams, present the MP4
 ```
 
@@ -51,9 +51,13 @@ Eight steps: **interview** → storyboard; scaffold; build one scene module per 
 
 ### 备选引擎：NumPy + Pillow (Alternative engine)
 
-画面本质是**数学**（场、SDF、分形、采样理论）、要**逐像素级的严格栅格排版**，或者无头 Chrome 起不来（沙箱 `spawn EPERM`）时，换第二条引擎：`python scripts/render-np.py --init=<dir> [--preset=<id>]` 脚手架，`--contact` 自检，`--out=out/video.mp4` 出片——契约、缓存、联系表、预设与 Chrome 引擎完全同构（`render_at(t, env)` 纯函数，帧缓存 `frames/f%05d.png`）。四个核心方法——**逐帧渲染、3D 透视投影、严格栅格与字阶、分段色彩脚本**——的完整做法见 `reference/numpy-pillow.md`。
+画面本质是**数学**（场、SDF、分形、采样理论）、要**逐像素级的严格栅格排版**，或者无头 Chrome 起不来（沙箱 `spawn EPERM`）时，换第二条引擎：`python scripts/render-np.py --init=<dir> [--preset=<id>]` 脚手架，`--contact` 自检，`--out=out/video.mp4` 出片——契约、缓存、联系表与 Chrome 引擎同构（`render_at(t, env)` 纯函数，帧缓存 `frames/f%05d.png`）。四个核心方法——**逐帧渲染、3D 透视投影、严格栅格与字阶、分段色彩脚本**——的完整做法见 `reference/numpy-pillow.md`。
+
+**与 Chrome 引擎的三处真实差异（实测）：** ① `--init --preset=` 只取 `palette`/`duration`（外加分镜与占位歌词），**不套 `fx` 与 `three`**——浅色预设（`claude`、`ink-paper`）在脚手架默认 `bloom: true` 下会整屏过曝，记得手动把 `fx.bloom` 关掉；② `--audio=` 按**进程 CWD** 解析（`--out=` 才是相对工程目录）；③ 没有 `--w/--h/--fps/--dur` 覆盖，尺寸只由 `project.json` 决定。另外本工作区 PATH 上的 `python` 没装 numpy/Pillow，要换 DSH 自带的 Python（见 `reference/authoring.md` 第 3 节）。
 
 When the frame is fundamentally **math** (fields, SDFs, fractals, sampling), when you need pixel-exact grid typography, or when headless Chrome cannot start (sandbox `spawn EPERM`), switch engines: `render-np.py` scaffolds (`--init`), self-checks (`--contact`) and renders (`--out=out/video.mp4`) with the identical contract, frame cache, contact sheet and preset set. Full recipes for the four core methods — frame-by-frame rendering, 3D perspective projection, strict grid & type scale, segmented color script — live in `reference/numpy-pillow.md`.
+
+**Three measured differences from the Chrome engine:** the NumPy scaffold applies only `palette`/`duration` (plus storyboard and placeholder lyrics) — **not `fx` or `three`**, so light presets blow out under the scaffold's default `bloom: true` until you switch it off; `--audio=` resolves against the process CWD while `--out=` resolves against the project; and there are no `--w/--h/--fps/--dur` overrides. The `python` on PATH here has neither numpy nor Pillow — use the DSH-bundled Python (see `reference/authoring.md`, section 3).
 
 ### 配音：MiMo TTS (Narration)
 
@@ -63,8 +67,12 @@ When the frame is fundamentally **math** (fields, SDFs, fractals, sampling), whe
 node skills/music-code-mv/scripts/tts.mjs --probe                   # 先确认配音可用
 node skills/music-code-mv/scripts/tts.mjs --out=n/01.wav "第一段旁白"  # 单段
 node skills/music-code-mv/scripts/tts.mjs --batch=narration.json      # 批量：[{file,text},…]
-ffprobe -i n/01.wav                                                  # 量实测时长，用来定镜头边界
+node skills/music-code-mv/scripts/tts.mjs --persona=presets/fairy.json --out=x.wav "…"   # 套用角色音色
+node_modules/ffmpeg-static/ffmpeg.exe -i n/01.wav                       # 量实测时长，用来定镜头边界（工作区没有 ffprobe；ffmpeg -i 打印 Duration，退出码 1 属正常）
 ```
+
+**音色跟着角色走**：带 `persona` 的角色智能体（如 `fairy`）在 `persona.voice` 里定义音色（`voiceDesignPrompt` 自定义音色 + 内置音色回退），`--persona=` 一条命令套上；批量清单里逐项写 `voice` / `voiceDesignPrompt` 可以让同一支片里换角色说话。
+**The voice follows the character:** agent presets carry `persona.voice` (a `voiceDesignPrompt` plus built-in fallbacks); `--persona=` applies it, and per-item entries in a batch manifest switch characters within one film.
 
 拿到各段时长后按下表排时间线，再用 `adelay=<ms>:all=1` 把每段摆到它的镜头起点、`amix=inputs=N:normalize=0` 合成一条 `track.wav`（`apad=whole_dur=<总长>` 补齐），最后 `--audio=narration/track.wav` 交给渲染器封装，`-shortest` 保证音画同长。
 
@@ -80,7 +88,7 @@ For any film with narration, **synthesize every line first and lay out the story
 
 | # | 问什么 | 选项建议 | 为什么问 |
 |---|---|---|---|
-| 1 | 用途与画幅 | 16:9 横屏 / 9:16 竖屏 / 1:1 | 决定 `--w --h --orientation`，返工最贵的一项 |
+| 1 | 用途与画幅 | 16:9 横屏 / 9:16 竖屏 / 1:1 | 决定 `--w --h`（横竖由宽高决定；`render.mjs` 没有 `--orientation`，那是 MV 工坊面板/渲染工具的档位），返工最贵的一项 |
 | 2 | 时长 | 15s / 30s / 60s / 自定义 | 决定镜头数与总帧数（60s@30fps = 1800 帧） |
 | 3 | 风格 | `neon-rain` / `ink-paper` / `phosphor` / `dusk-lofi` / 自定配色 | 直接决定调色板与后期强度 |
 | 4 | 歌词来源 | 用户提供 LRC / 我写占位 / 无歌词纯器乐 | 决定分镜是否锚到歌词行 |
@@ -114,7 +122,7 @@ node skills/music-code-mv/scripts/init.mjs my-mv --preset=neon-rain  # 套用预
 node skills/music-code-mv/scripts/init.mjs --list-presets            # 列出预设 / list presets
 ```
 
-四套氛围预设：`neon-rain`（霓虹雨夜）、`ink-paper`（纸墨，浅色）、`phosphor`（磷光终端）、`dusk-lofi`（落日低保真）；另有一族**主流 AI 模型配色预设**：`claude`（橙白）、`deepseek`（蓝黑）、`gpt`（黑白）、`gemini`、`grok`、`mistral`、`llama`、`qwen`、`kimi`——每个都带品牌色提取来的六角色调色板、匹配气质的分镜骨架与 **Three.js 镜头逻辑**。
+四套氛围预设：`neon-rain`（霓虹雨夜）、`ink-paper`（纸墨，浅色）、`phosphor`（磷光终端）、`dusk-lofi`（落日低保真）；另有一族**主流 AI 模型配色预设**：`claude`、`deepseek`、`gpt`、`gemini`、`grok`、`mistral`、`llama`、`qwen`、`kimi`、`doubao`、`zhipu`、`midjourney`、`fairy`……每个都带品牌色提取来的六角色调色板、匹配气质的分镜骨架与 **Three.js 镜头逻辑**。**完整名单以 `--list-presets` 的输出为准**（预设还在增加），改完预设跑 `python scripts/audit-presets.py` 验配色纪律。
 细节与「怎么用才不浪费」见 `reference/presets.md`。Preset details live in `reference/presets.md`.
 
 生成的项目自带 Canvas2D 舞台、时间轴、带种子的 PRNG、歌词解析、风格辅助函数和一个可跑的演示场景。**3D 是默认，场面要豪华**：镜头默认从 Three.js 起步（粒子群、发光体、反射地面、连续相机运动），只有纯排版与纯数据镜头留在 2D——那里 3D 只会把字压花。决策梯与「豪华场面清单」（六条起步标准 + 过曝红线）见 `reference/threejs.md`；退级要写出理由。**一个镜头只用一种深度方案。**
@@ -131,9 +139,15 @@ A scene is a plain object:
 export default {
   id: 'verse-1',
   start: 8, end: 14,
-  draw(ctx, t, env) { /* t = local seconds, env = {w,h,fps,rnd,lyric,...} */ }
+  // 第一个参数是 stage（stage.ctx 才是 2d context）；t = 本镜头的局部时间；
+  // env.t = 全局时间（歌词、节拍必须读它）；p = 0..1 镜头内进度
+  draw(stage, t, env, p) { /* env = {w,h,fps,duration,palette,project,lyrics,stage,t,local,fx} */ }
 };
 ```
+
+随机来自 `src/rng.js` 的 `mulberry32(seed)` / `hash1` / `hash2`，**每个镜头用自己播一次种**（`env.rnd(seed)` 是 NumPy 引擎的接口，Chrome 模板的 `env` 没有 `rnd` 字段）。
+
+Randomness comes from `mulberry32(seed)` / `hash1` / `hash2` in `src/rng.js`, seeded once per shot (`env.rnd(seed)` belongs to the NumPy engine — the Chrome template's `env` has no `rnd` field).
 
 在 `src/scenes/index.js` 里注册它。场景之间可以重叠做合成；时间轴按数组顺序绘制它们。
 
@@ -142,22 +156,22 @@ Register it in `src/scenes/index.js`. Scenes may overlap for compositing; the ti
 ### 4. 联系表 —— 自检回路 (Contact sheet — the self-check loop)
 
 ```bash
-node scripts/render.mjs --project=my-mv --contact
+node skills/music-code-mv/scripts/render.mjs --project=my-mv --contact --w=480 --h=270
 ```
 
-它会渲染 N 张等距关键帧，拼成一张 PNG，并打印这张图的路径。**用读图工具看这张图，并对它挑毛病**：构图、可读性、对比度、运动弧线、画面里到底有没有事情发生。这是整条流水线里最便宜、也最值钱的一步。
+它会渲染 N 张等距关键帧，拼成一张 PNG，并打印这张图的路径。**用读图工具看这张图，并对它挑毛病**：构图、可读性、对比度、运动弧线、画面里到底有没有事情发生。这是整条流水线里最便宜、也最值钱的一步——所以一律降到 480×270 草稿分辨率，秒级回环。
 
-Renders N evenly spaced keyframes, tiles them into one PNG and prints its path. **Read that image with the image reader and critique it**: composition, legibility, contrast, motion arc, whether anything actually happens. This is the cheapest and highest-value step in the whole pipeline.
+Renders N evenly spaced keyframes, tiles them into one PNG and prints its path. **Read that image with the image reader and critique it**: composition, legibility, contrast, motion arc, whether anything actually happens. The cheapest and highest-value step in the pipeline, so always run it at draft resolution (480×270) for a seconds-long loop.
 
 ### 5. 完整渲染 (Full render)
 
 ```bash
-node scripts/render.mjs --project=my-mv --out=out/video.mp4 --audio=track.mp3
+node skills/music-code-mv/scripts/render.mjs --project=my-mv --out=out/video.mp4 --audio=track.mp3
 ```
 
-帧是带缓存的：重跑会从断点续起，只渲染还缺的那部分。想全部重来就加 `--force`。
+帧是带缓存的：**文件在且渲染签名没变**才复用（签名 = 宽/高/fps/时长/引擎/画质 + 场景 `deps`），所以改尺寸必然整轮重渲；只改 `--out`/`--audio`/`--workers` 不影响复用（实测 `0 rendered, 60 reused`）。想全部重来加 `--force`，编码后清缓存用 `--clean`。
 
-Frames are cached: re-running resumes and only renders what is missing. Use `--force` to redo everything.
+Frames are reused only when the file exists **and** the render signature is unchanged (width / height / fps / duration / engine / quality + scene `deps`), so changing the resolution always re-renders; `--out`/`--audio`/`--workers` do not. `--force` redoes everything, `--clean` purges `frames/` after encoding.
 
 ## 尺寸与时间预算 (Sizing and time budget)
 
@@ -207,13 +221,14 @@ This skill was tested end to end on this workspace: probe reports READY, the bun
 
 ## 运行环境 (Environment)
 
-需要 Node.js、Google Chrome（或 Edge）和 ffmpeg。在本工作区里，它们已经随托管本 skill 的项目一起备好了；跑 `node scripts/probe.mjs` 会打印确切路径和就绪判定。安装与降级方案见 `reference/environment.md`。
+需要 Node.js、Google Chrome（或 Edge）和 ffmpeg。在本工作区里，它们已经随托管本 skill 的项目一起备好了；跑 `node skills/music-code-mv/scripts/probe.mjs` 会打印确切路径和就绪判定。安装与降级方案见 `reference/environment.md`。
 
-Requires Node.js, Google Chrome (or Edge) and ffmpeg. In this workspace they are already provisioned inside the project that hosts this skill; run `node scripts/probe.mjs` to print exact paths and a readiness verdict. See `reference/environment.md` for install and fallback details.
+Requires Node.js, Google Chrome (or Edge) and ffmpeg. In this workspace they are already provisioned inside the project that hosts this skill; run `node skills/music-code-mv/scripts/probe.mjs` to print exact paths and a readiness verdict. See `reference/environment.md` for install and fallback details.
 
 ## 参考文档 (Reference)
 
-- `reference/presets.md` —— 四个开箱即用的预设：配色、后期、时长、分镜、占位歌词；外加 AI 模型配色预设家族
+- `reference/authoring.md` —— **创作对接实操指南**：从空工作区到成片的完整命令序列（逐条实跑）、Chrome vs NumPy 引擎怎么选、预设怎么挑、TTS 配音顺序、联系表怎么读、常见报错与修法
+- `reference/presets.md` —— 预设三族：四套氛围预设、AI 模型配色预设家族、带 `persona`/`voice` 的角色智能体预设；配色、后期、时长、分镜、占位歌词
 - `reference/styles.md` —— 代码 MV 观感的风格词汇：T1–T27 风格（显示器家族 T13–T24：CRT/矢量屏/VFD/数码管/LED 点阵/LCD/OLED/电子墨水/热敏/全息投影/VHS/机械翻牌；印刷与像素 T25–T27：半调/像素画/数据砸裂）、M1–M17 母题库（从开机到关机的全部视觉元素）、配色逻辑与品牌两色系统
 - `reference/numpy-pillow.md` —— NumPy + Pillow 逐帧引擎：3D 透视投影、严格栅格与字阶、分段色彩脚本
 - `reference/techniques.md` —— 确定性渲染、Chrome flag、截帧、编码
@@ -221,6 +236,7 @@ Requires Node.js, Google Chrome (or Edge) and ffmpeg. In this workspace they are
 - `reference/lineage.md` —— 这种形式从哪来、这个领域在做什么
 - `reference/environment.md` —— 工具链安装、降级方案、排障
 
+- `reference/authoring.md` — **the authoring playbook**: the full command sequence from an empty workspace to an MP4 (every command run here), choosing the Chrome vs NumPy engine, picking a preset, narration order, reading a contact sheet, real errors and their fixes
 - `reference/styles.md` — style vocabulary: T1–T27 styles (display family T13–T24: CRT/vector/VFD/segments/LED matrix/LCD/OLED/e-ink/thermal/hologram/VHS/split-flap; print & pixel T25–T27: halftone/pixel art/datamosh), the M1–M17 motif library (every visual element of the boot→shutdown program), colour logic and the brand two-colour system
 - `reference/numpy-pillow.md` — the NumPy + Pillow frame engine: 3D perspective projection, strict grid & type scale, segmented color script
 - `reference/techniques.md` — deterministic rendering, Chrome flags, capture, encoding
@@ -232,7 +248,7 @@ Requires Node.js, Google Chrome (or Edge) and ffmpeg. In this workspace they are
 
 - **自己推进时间的 rAF 循环** —— `t` 必须归渲染器掌控。
 - **在绘制代码里读挂钟** —— 会毁掉帧缓存与确定性。
-- **每帧调 `Math.random()`** —— 产生无法复现、无法缓存的闪烁。改用 `env.rnd(seed)`。
+- **每帧调 `Math.random()`** —— 产生无法复现、无法缓存的闪烁。Chrome 模板改用 `src/rng.js` 的 `mulberry32(seed)`（每镜头播种一次），NumPy 引擎用 `env.rnd(seed)`。
 - **杂乱背景上放不可读的字** —— 加一层遮罩，或者把文字背后的背景压暗。
 - **Bloom / 曝光过曝** —— 软件渲染器会放大自发光数值；bloom 强度保持在 1 附近。
 - **看都不看就交付。** 一定要读联系表。
@@ -240,7 +256,7 @@ Requires Node.js, Google Chrome (or Edge) and ffmpeg. In this workspace they are
 
 - **rAF loops** that advance time themselves — the renderer must own `t`.
 - **Reading the wall clock** anywhere in draw code — breaks frame caching and determinism.
-- **`Math.random()` per frame** — flicker that cannot be reproduced or cached. Use `env.rnd(seed)`.
+- **`Math.random()` per frame** — flicker that cannot be reproduced or cached. Use `mulberry32(seed)` from `src/rng.js`, seeded once per shot (Chrome template); the NumPy engine exposes `env.rnd(seed)`.
 - **Unreadable type** over a busy background: add a scrim, or dim the background behind text.
 - **Bloom/exposure blowout** — software renderers amplify emissive values; keep bloom strength near 1.
 - **Shipping without looking.** Always read the contact sheet.

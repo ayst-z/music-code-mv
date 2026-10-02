@@ -459,7 +459,9 @@ Formula: one accent + a gradient derived from it + a tinted near-black + an off-
 
 全片按段落切成**色彩章节**：段内六角色稳定，段间硬切（或 0.3–0.5s 交叉溶解），**角色跨段守恒**——换的是衣服，不是身份。`segments` 写进 `project.json`，段边界贴 intro / verse / chorus / exit 的段落标记，不贴任意秒数；雾色、bloom 色、暗角色一律取**当前段**的调色板。副歌的暗版（M13）就是同一构图换一套更冷的段色。
 
-Cut the film into color chapters: roles hold inside a segment, segments change by hard cut (or a 0.3–0.5 s crossfade), and roles are conserved across the cut. Segment boundaries sit on section markers, never on arbitrary seconds; fog/bloom/vignette follow the current segment's palette. Field formulas and a full worked example live in `reference/numpy-pillow.md`; the same `segments` array is honoured by both engines.
+**引擎差异：** NumPy 引擎**自动**按 `segments` 换段色（`chapter_at()` 读 `env.segments`）；Chrome 模板**不会自动读它**——模板的 `env` 里没有 `segments` 字段，镜头要自己取 `env.project.segments`，否则 `segments` 只是个没人消费的字段。
+
+Cut the film into color chapters: roles hold inside a segment, segments change by hard cut (or a 0.3–0.5 s crossfade), and roles are conserved across the cut. Segment boundaries sit on section markers, never on arbitrary seconds; fog/bloom/vignette follow the current segment's palette. Field formulas and a full worked example live in `reference/numpy-pillow.md`. **Per engine:** the NumPy engine switches palette from `segments` automatically (`chapter_at()`), while the Chrome template does **not** — its `env` carries no `segments` field, so a scene must read `env.project.segments` itself.
 
 ### 浅色预设纪律 (Light-preset discipline)
 
