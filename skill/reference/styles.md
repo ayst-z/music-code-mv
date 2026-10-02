@@ -551,3 +551,64 @@ A strong default stack for this genre: **T1 + T4** for verses, **T2** for chorus
 **显示器的组合法**：显示器风格是**独立一层**——一个段落只用一种，垫在母题与排版**下面**，而不是和另一种显示器互叠（T1 终端排版可以叠在 T13 显像管上，M11 崩溃母题可以叠在 T27 数据砸裂上；但 CRT 上再糊 VHS 就是两台机器同时坏掉）。年代按段落排：开机/关机 → T13，九十年代回忆 → T23，大厅倒数 → T24，现代设备 → T18/T19，纸面章节 → T20/T25。段落之间换显示器，先过一道黑场或闪黑——T20 的刷新闪是最自然的换管信号。
 
 **Display combos:** a display style is its own layer — one per segment, under motifs and typography, never stacked over another display (T1 terminal on a T13 tube, M11 collapse on T27 datamosh; CRT *plus* VHS is two machines breaking at once). Order eras by section: boot/shutdown → T13, 90s memories → T23, lobby countdown → T24, modern devices → T18/T19, paper chapters → T20/T25. To swap displays across a transition, cut through black first — T20's refresh flash is the most natural changeover signal.
+
+## 叠层纪律 (Layering discipline) —— 不臃肿，不单调
+
+画面是**一层一层叠**出来的。固定次序（自下而上，序号就是 z 序）：
+
+```text
+0  深度层   3D 背幕 / 地板 / 星尘        最暗，永远低于内容，bgAlpha 压着
+1  显示器层 T13–T24                      一个段落一种，垫在下面（见组合搭配）
+2  内容层   主体：图表 / 镜头主角 / 粒子群  本镜的「主角」
+3  母题层   M1–M17 的事件                 稀疏；来了就要走（有进场就有退场）
+4  排版层   标题 / 字幕 / 数字             最上，对比度最高，永远压得住背景
+5  收尾层   fx：bloom→chroma→scanlines→vignette→grain   只做统一，不加新信息
+```
+
+### 不臃肿 —— 一个时刻只有一个焦点
+
+**判据（对单帧）**：焦点 ≤1；可见层（alpha>0.06）≤5；**每层都要说得出存在理由**；排版对背景对比 ≥4.5:1。
+
+| 臃肿症状 | 修法 |
+|---|---|
+| 两个都在发光，抢焦点 | 压暗次要层：`alpha ×0.4`、加 `dim` 遮罩、或关它的 bloom |
+| 文字压在杂背景上 | 文字后面加 scrim 或压暗背景（**不是**加描边硬撑） |
+| 每层都想被看见 | **删一层**；删不掉就降级为背景（低 alpha、去色差、去运动） |
+| 新元素只进不出 | 母题给事件边界：进场 → 驻留 → 退场（M 系母题本来就按事件定义） |
+| 特效层在加信息 | fx 只做统一（暗角/颗粒收边），信息留给 0–4 层 |
+
+### 不单调 —— 跨时间要有变化
+
+**判据（对时间轴，3s 滑窗）**：密度 / 亮度 / 运动 / 深度 四条轴里**至少一条在动**；每个镜头有事件。
+
+| 单调症状 | 修法 |
+|---|---|
+| 每帧都一样 | 按段落换层——「组合搭配」的年代表就是现成的换层表 |
+| 密度全程恒定 | 疏密交替：密集事件段之后接一个**留白段**（少即是多的另一半） |
+| 全程静止机位 | 连续相机运动（3D 豪华清单第 5 条：dolly/orbit/crane） |
+| 焦点从不轮换 | 一镜一焦点，且**换焦点类型**：字 → 图 → 数 → 空间 |
+| 层从不增删 | 段落边界上做层的加减（进入新段落时换掉 1–2 层，而不是全留） |
+
+### 伪代码
+
+```text
+fn audit_frame(frame, layers):                 # 不臃肿（看一帧）
+    visible = [l for l in layers if l.alpha > 0.06]
+    assert count_focal(visible) <= 1
+    assert len(visible) <= 5
+    for l in visible: assert l.reason           # 说得出为什么在
+    assert contrast(typography, its_backdrop) >= 4.5    # 规矩 5
+
+fn audit_timeline(t0, t1):                      # 不单调（看一段）
+    for axis in [density, brightness, motion, depth]:
+        assert spread(series(axis, window=3s)) > 0      # 至少一条轴在动
+    for shot in shots(t0, t1):
+        assert shot.has_one_countable_event()           # 规矩 4
+        assert focal_type(shot) != focal_type(prev)     # 焦点类型轮换
+```
+
+### 与已有规矩的关系
+
+规矩 4（一镜一件事）就是「不单调」的**时间轴判据**；规矩 5（文字可读）就是「不臃肿」的**排版判据**；「组合搭配」告诉你**怎么换层**，本节告诉你**叠几层、什么时候删层**。三者合起来才是一套完整的构图纪律。
+
+Layering order is fixed — depth, display, subject, motif, type, then finishing FX. Judge bloat on a single frame (one focal point, at most five visible layers, every layer able to state its reason, type always winning contrast) and judge monotony across time (at least one of density/brightness/motion/depth must move within a 3 s window; every shot carries one countable event; the focal *kind* rotates). Rules 4 and 5 are exactly the timeline and typographic forms of these two tests, and 组合搭配 supplies the swap table.
