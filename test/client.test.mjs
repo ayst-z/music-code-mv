@@ -190,7 +190,7 @@ const viewRoot = viewNodes.find((n) => n.props && n.props['data-music-mv-popup']
 ok('视图页 = 全幅管理界面（dshMvPage + dshMvBig，无锚定样式、无关闭/展开键）',
   !!viewRoot && String(viewRoot.props.className).indexOf('dshMvPage') >= 0 &&
   String(viewRoot.props.className).indexOf('dshMvBig') >= 0 &&
-  viewRoot.props.style === null &&
+  viewRoot.props.style == null &&
   !viewNodes.some((n) => n.props && n.props['data-fs'] === '1') &&
   !viewNodes.some((n) => n.props && n.props['aria-label'] === popupT('popup.close')),
   viewRoot ? String(viewRoot.props.className) : 'missing');
@@ -198,60 +198,36 @@ ok('视图页带完整功能：三区动作 + 预设区 + 页面模式 CSS',
   viewNodes.filter((n) => n.props && n.props['data-act'])
     .map((n) => n.props['data-act']).join(',') === 'teammate,render,styles,copy' &&
   viewNodes.some((n) => n.props && n.props['data-music-mv-opts'] === '1') &&
-  SRC.includes('.dshMvPage{position:relative') && SRC.includes('.dshMvPopupBig,.dshMvPage{animation:dshMvBig'),
+  SRC.includes('.dshMvPage{position:relative') && SRC.includes('animation:dshMvBig .18s ease-out'),
   'full page panel');
 
-// ---- 标题栏右上角入口 / conversation-titlebar top-right entry ----
+// ---- 标题栏小按钮已移除（用户：有标签页之后不要小按钮）----
 const utilSlot = calls.slots.find(function (s) { return s.spec.name === 'conversation.session.header.utilities'; });
-ok('入口挂在 conversation.session.header.utilities 槽位', !!utilSlot,
-  utilSlot ? utilSlot.spec.id : 'missing');
-ok('入口 id / order / locale（右侧排列、走自身字典）',
-  !!utilSlot && utilSlot.spec.id === 'music-mv-studio-entry' && utilSlot.spec.order >= 100 &&
-  utilSlot.spec.locale === 'musicCodeMv',
-  utilSlot ? JSON.stringify({ id: utilSlot.spec.id, order: utilSlot.spec.order, locale: utilSlot.spec.locale }) : '');
-const entryInject = utilSlot && typeof utilSlot.spec.inject === 'function' ? utilSlot.spec.inject() : null;
-ok('入口注入了 openStudio 句柄', !!entryInject && typeof entryInject.openStudio === 'function');
-const entryT = (k) => (calls.dictionaries.dict.zh[k] !== undefined ? calls.dictionaries.dict.zh[k] : k);
-const entryTree = utilSlot ? utilSlot.component({ t: entryT, openStudio: entryInject ? entryInject.openStudio : function () {} }) : null;
-const entryNodes = walkAll(entryTree);
-const entryBtn = entryNodes.find((n) => n.type === 'button');
-const entryLabel = entryNodes.find((n) => n.props && n.props.className === 'dshMvEntryLabel');
-ok('入口渲染按钮 + 图标 + label + 悬停提示',
-  !!entryBtn && entryBtn.props['data-music-mv-entry'] === '1' &&
-  typeof entryBtn.props.title === 'string' && entryBtn.props.title === entryBtn.props['aria-label'] &&
-  entryBtn.props.title === calls.dictionaries.dict.zh['entry.tooltip'] &&
-  !!entryNodes.find((n) => n.type === 'svg') && !!entryLabel && entryLabel.props.children === 'codeMV',
-  entryBtn ? String(entryBtn.props.title) : 'no button');
-ok('自适应：容器查询 + 窗口查询都把 label 折叠成纯图标',
-  SRC.includes('@container (max-width: 760px)') && SRC.includes('@media (max-width: 960px)') &&
-  SRC.includes('.dshMvEntryLabel{display:none;') && SRC.includes('dsh-music-code-mv-entry-style') &&
-  SRC.includes("'conversation.session.header.utilities'"),
-  'adaptive css + slot source wired');
-ok('适配：弹层宽度随视口收缩、自己就是查询容器（分级网格可降列）',
-  SRC.includes('width:min(340px, calc(100vw - 24px))') && SRC.includes('container-type:inline-size') &&
-  SRC.includes('@container (max-width: 300px){.dshMvGallery{grid-template-columns:1fr;}}'),
-  'responsive popup + gallery');
+ok('标题栏小按钮已移除：不再注册 conversation.session.header.utilities',
+  !utilSlot && !calls.slotsInject.includes('conversation.session.header.utilities'),
+  'entry slot unregistered');
+ok('源码里没有入口按钮 / 遮罩 / 展开按钮 / 锚点测量 / 全屏记忆',
+  !SRC.includes('dshMvEntry') && !SRC.includes('dshMvBackdrop') && !SRC.includes('TitlebarEntry') &&
+  !SRC.includes('popupAnchor') && !SRC.includes('LS_FS') && !SRC.includes('dshMvFsBtn'),
+  'entry fully removed');
+ok('侧栏提示改为指向「MV 工坊」标签页',
+  String(calls.dictionaries.dict.zh['sidebar.hint']).indexOf('标签页') >= 0 &&
+  String(calls.dictionaries.dict.en['sidebar.hint']).indexOf('tab') >= 0,
+  calls.dictionaries.dict.zh['sidebar.hint'].slice(0, 24) + '…');
+ok('适配：面板自成查询容器（分级网格可降列）+ 页面铺满视图区',
+  SRC.includes('container-type:inline-size') &&
+  SRC.includes('@container (max-width: 300px){.dshMvGallery{grid-template-columns:1fr;}}') &&
+  SRC.includes('.dshMvPage{position:relative'), 'responsive page + gallery');
 ok('适配：预览图随容器缩放不撑破面板', SRC.includes('max-width:100%;height:auto'), 'fluid preview image');
-// 点击 → 切换原生弹层（不直接把用户甩进网页）
-calls.opened.length = 0;
-ok('入口按钮带 aria-expanded 且有点击处理器',
-  !!entryBtn && entryBtn.props['aria-expanded'] === false && typeof entryBtn.props.onClick === 'function',
-  entryBtn ? 'aria-expanded=' + String(entryBtn.props['aria-expanded']) : 'no button');
-ok('入口按钮持有 ref（弹层按它实测锚点）',
-  !!entryBtn && !!entryBtn.props.ref && SRC.includes('getBoundingClientRect'), 'anchor measurement wired');
-if (entryBtn && typeof entryBtn.props.onClick === 'function') entryBtn.props.onClick();
-ok('点入口本身不强行开网页（弹层才是入口）', calls.opened.length === 0, JSON.stringify(calls.opened));
 
-// ---- 原生弹层：结构、动作、开工降级 ----
-const popupTree = mod.__internals.EntryPopup({
-  t: popupT, ctx: ctx, openStudio: entryInject ? entryInject.openStudio : function () {}, onClose: function () {}
-});
+// ---- 面板：结构、动作、开工降级 ----
+const popupTree = mod.__internals.EntryPopup({ t: popupT, ctx: ctx });
 const popupNodes = walkAll(popupTree);
 const popupRoot = popupNodes.find((n) => n.props && n.props['data-music-mv-popup'] === '1');
-ok('弹层是原生 DOM（div + role=dialog + aria-label）',
-  !!popupRoot && popupRoot.type === 'div' && popupRoot.props.role === 'dialog' &&
-  typeof popupRoot.props['aria-label'] === 'string',
-  popupRoot ? popupRoot.type + ' role=' + popupRoot.props.role : 'missing');
+ok('面板是原生 DOM（div + role=region + 标题 aria-label）',
+  !!popupRoot && popupRoot.type === 'div' && popupRoot.props.role === 'region' &&
+  popupRoot.props['aria-label'] === 'MV 工坊',
+  popupRoot ? popupRoot.type + ' role=' + popupRoot.props.role + ' label=' + popupRoot.props['aria-label'] : 'missing');
 ok('弹层里没有自定义元素、没有内嵌网页',
   !popupNodes.some((n) => typeof n.type === 'string' && /^[a-z]+(-[a-z0-9]+)+$/.test(n.type)) &&
   !popupNodes.some((n) => n.type === 'iframe'),
@@ -279,8 +255,8 @@ const pill = popupNodes.find((n) => n.props && n.props.className === 'dshMvPill'
 ok('头部连接状态药丸（读取中起步，颜色之外还有文字）',
   !!pill && pill.props['data-state'] === 'probing' && pill.props.children === '读取中',
   pill ? String(pill.props['data-state']) + '/' + String(pill.props.children) : 'missing');
-ok('弹层打开即聚焦（tabIndex -1 + ref），键盘直接落在对话框里',
-  !!popupRoot && popupRoot.props.tabIndex === -1 && !!popupRoot.props.ref, 'focus on open');
+ok('不劫持焦点：页面模式不注入 focus 逻辑（rootRef 已随弹层外壳移除）',
+  !SRC.includes('rootRef') && !SRC.includes('.focus()'), 'no focus steal');
 ok('回执区 aria-live=polite（不抢焦点地播报）', SRC.includes("'aria-live': 'polite'"), 'aria-live wired');
 ok('渲染动作如实回执（没有工程 / 失败 / 成功各自如实）',
   SRC.includes("say('popup.renderNone')") &&
@@ -317,20 +293,20 @@ ok('命中原生服务即以子代理形式开工',
 ok('开工提示词点名 spawn_teammate / subagent',
   String(spawnArgs.length ? spawnArgs[0].prompt : '').indexOf('spawn_teammate') > 0,
   'prompt=' + String(spawnArgs.length ? spawnArgs[0].prompt.slice(0, 48) : ''));
-// 页面类型缺席 → 退回宿主工作室地址（真实地址，不伪造）
+// 页面类型缺席 → 退回宿主工作室地址（真实地址，不伪造）；句柄挪进 __internals（UI 已不再暴露）
 const realTabGet = ctx.sidebarRightTabs.get;
 const realWindowOpen = globalThis.window.open;
 const openedUrls = [];
 ctx.sidebarRightTabs.get = function () { return undefined; };
 globalThis.window.open = function (u) { openedUrls.push(String(u)); };
-const howUrl = entryInject ? entryInject.openStudio() : 'none';
+const howUrl = mod.__internals.openStudioPage(ctx);
 ok('页面类型缺席时退回宿主工作室地址', howUrl === 'url' && openedUrls.length === 1 &&
   openedUrls[0] === 'http://127.0.0.1:19387/music-mv/studio',
   howUrl + ' ' + JSON.stringify(openedUrls));
 // 连宿主地址都没有 → 如实返回 none（离线提示，不伪造）
 globalThis.window.location = { protocol: 'file:', origin: 'null' };
 globalThis.location = globalThis.window.location;
-const howNone = entryInject ? entryInject.openStudio() : 'missing';
+const howNone = mod.__internals.openStudioPage(ctx);
 ok('拿不到任何数据源时如实返回 none', howNone === 'none', howNone);
 globalThis.window.location = { protocol: 'http:', origin: 'http://127.0.0.1:19387' };
 globalThis.location = globalThis.window.location;
@@ -353,78 +329,45 @@ ok('locale 的 entry 键与运行时字典逐一对齐',
   Object.keys(enLoc.entry).every((k) => calls.dictionaries.dict.en['entry.' + k] !== undefined),
   Object.keys(zhLoc.entry).length + ' entry keys');
 
-// ---- 锚点定位：默认对话框不再错位 ----
-const a1 = mod.__internals.popupAnchor({ bottom: 100, right: 800 }, 1200, 800, 340);
-ok('锚点：贴按钮下沿 + 右缘对齐', a1.top === '105px' && a1.right === '400px', JSON.stringify(a1));
-const a2 = mod.__internals.popupAnchor({ bottom: 100, right: 1199 }, 1200, 800, 340);
-ok('锚点：贴屏右缘时留 8px 边', a2.right === '8px', JSON.stringify(a2));
-const a3 = mod.__internals.popupAnchor({ bottom: 100, right: 50 }, 1200, 800, 340);
-ok('锚点：按钮靠左时整体回收进屏内', a3.right === (1200 - 340 - 8) + 'px', JSON.stringify(a3));
-const a4 = mod.__internals.popupAnchor({ bottom: 700, right: 800 }, 1200, 600, 340);
-ok('锚点：下方放不下就向上收（不出下缘）', a4.top === (600 - 140) + 'px', JSON.stringify(a4));
-const anchoredTree = mod.__internals.EntryPopup({
-  t: popupT, ctx: ctx, anchor: { top: '105px', right: '400px' }, onClose: function () {}
-});
-const anchoredRoot = walkAll(anchoredTree).find((n) => n.props && n.props['data-music-mv-popup'] === '1');
-ok('量到锚点就用 fixed 精确定位（否则退回 CSS absolute）',
-  !!anchoredRoot && anchoredRoot.props.style && anchoredRoot.props.style.position === 'fixed' &&
-  anchoredRoot.props.style.top === '105px' && anchoredRoot.props.style.right === '400px' &&
-  popupRoot.props.style === null,
-  JSON.stringify(anchoredRoot ? anchoredRoot.props.style : null));
+// ---- 一键进入子代理（标签页主舞台）/ one-click subagent hero ----
+const hero = popupNodes.find((n) => n.props && n.props['data-hero'] === '1');
+const heroKids = walkAll(hero);
+const heroBtn = heroKids.find((n) => n.props && n.props['data-act'] === 'teammate');
+ok('hero 主舞台：一键进入子代理（主色大按钮，位于主体最前、动作区之上）',
+  !!hero && !!heroBtn && heroBtn.props.children === '一键进入子代理' &&
+  String(heroBtn.props.className).indexOf('dshMvHeroBtn') >= 0 &&
+  String(heroBtn.props.className).indexOf('dshMvActPrimary') >= 0 &&
+  popupNodes.indexOf(bodyNode) < popupNodes.indexOf(hero) &&
+  popupNodes.indexOf(hero) < popupNodes.indexOf(footNode),
+  heroBtn ? String(heroBtn.props.children) : 'missing');
+const heroChips = heroKids.find((n) => n.props && n.props['data-hero-chips'] === '1');
+ok('hero 显示当前预设一行（分辨率 · 中文风格名 · 帧率）',
+  !!heroChips && String(heroChips.props.children).indexOf('当前预设：') === 0 &&
+  String(heroChips.props.children).indexOf('标准 1280×720') >= 0 &&
+  String(heroChips.props.children).indexOf('DeepSeek 蓝黑') >= 0,
+  heroChips ? String(heroChips.props.children) : 'missing');
+ok('hero 副行说明四级降级 + 未选预设的如实兜底 + CSS 卡片样式',
+  heroKids.some((n) => n.props && String(n.props.children).indexOf('四级降级') >= 0) &&
+  typeof calls.dictionaries.dict.zh['popup.heroNoPresets'] === 'string' &&
+  typeof calls.dictionaries.dict.en['popup.heroStart'] === 'string' &&
+  SRC.includes('.dshMvHero{') && SRC.includes('.dshMvHeroBtn{'), 'hero copy + css');
+ok('钉底动作区只放次级动作（开工已上移到 hero，不重复出现）',
+  walkAll(actsList).filter((n) => n.props && n.props['data-act'])
+    .map((n) => n.props['data-act']).join(',') === 'render,styles,copy',
+  walkAll(actsList).filter((n) => n.props && n.props['data-act']).map((n) => n.props['data-act']).join(','));
 
-// ---- 展开大窗（与弹层同级切换，不占满屏幕）与动画 / expand + motion ----
-ok('展开大窗尺寸：min(760px, 100vw-32) + max-height 76vh（不出视口、不覆盖整屏）',
-  SRC.includes('.dshMvPopupBig{width:min(760px, calc(100vw - 32px));') &&
-  SRC.includes('max-height:min(76vh, calc(100vh - 140px))') &&
-  !SRC.includes('fullscreenStyle') && !SRC.includes("borderRadius: '0'"),
-  'big window sizing, no viewport takeover');
-const bigAnchor = mod.__internals.popupAnchor({ bottom: 100, right: 200 }, 1200, 800, 760);
-ok('大窗档位重算锚点：760 宽时左缘也不出屏（右缘收到 432px）',
-  bigAnchor.right === (1200 - 760 - 8) + 'px', JSON.stringify(bigAnchor));
-store.set('dsh-music-code-mv.fullscreen', '1');
-const fsTree = mod.__internals.EntryPopup({
-  t: popupT, ctx: ctx, anchor: { top: '105px', right: '400px' }, onClose: function () {}
-});
-const fsNodes = walkAll(fsTree);
-const fsRoot = fsNodes.find((n) => n.props && n.props['data-music-mv-popup'] === '1');
-const fsBtn = fsNodes.find((n) => n.props && n.props['data-fs'] === '1');
-ok('记住展开偏好：重开就是大窗（类 dshMvPopupBig + **同一锚点** fixed + 开关「收起」）',
-  !!fsRoot && String(fsRoot.props.className).indexOf('dshMvPopupBig') >= 0 &&
-  !!fsRoot.props.style && fsRoot.props.style.position === 'fixed' &&
-  fsRoot.props.style.top === '105px' && fsRoot.props.style.right === '400px' &&
-  !!fsBtn && fsBtn.props['aria-pressed'] === true && fsBtn.props.children === '收起',
-  fsBtn ? String(fsBtn.props.children) : 'missing');
-store.delete('dsh-music-code-mv.fullscreen');
-ok('默认态开关文案「展开」、aria-pressed=false（可键盘操作）',
-  popupNodes.some((n) => n.props && n.props['data-fs'] === '1' &&
-    n.props.children === '展开' && n.props['aria-pressed'] === false &&
-    typeof n.props.onClick === 'function'), 'toggle present');
-const toggled = [];
-const controlledTree = mod.__internals.EntryPopup({
-  t: popupT, ctx: ctx, expanded: true,
-  onToggleExpanded: function (v) { toggled.push(v); }, onClose: function () {}
-});
-const ctrlBtn = walkAll(controlledTree).find((n) => n.props && n.props['data-fs'] === '1');
-if (ctrlBtn && typeof ctrlBtn.props.onClick === 'function') ctrlBtn.props.onClick();
-ok('受控切换：点开关通知父级收起并持久化偏好（父级按档位重量锚点）',
-  toggled.length === 1 && toggled[0] === false &&
-  store.get('dsh-music-code-mv.fullscreen') === '0' &&
-  SRC.includes('measure(next ? EXPANDED_WIDTH : POPUP_WIDTH)'),
-  JSON.stringify(toggled));
-store.delete('dsh-music-code-mv.fullscreen');
-ok('Esc 在大窗时先收起、再按一次才关弹层',
-  SRC.includes('if (bigRef.current)') && SRC.includes("lsSet(LS_FS, '0')"), 'esc order');
-ok('动画：开屏 / 切级 / 大窗 / 遮罩四段关键帧 + 悬停过渡 + 尊重减少动效',
+// ---- 动画与排版 / motion + layout ----
+ok('动画：开屏 / 切级 / 页面展开三段关键帧 + 悬停过渡 + 尊重减少动效',
   SRC.includes('@keyframes dshMvPop') && SRC.includes('@keyframes dshMvPanel') &&
-  SRC.includes('@keyframes dshMvBig') && SRC.includes('@keyframes dshMvFade') &&
+  SRC.includes('@keyframes dshMvBig') &&
   SRC.includes('prefers-reduced-motion') && SRC.includes('transition:background .12s ease'),
   'motion + reduced-motion');
 ok('切级时主体重挂播放滑入动画（body key 跟面板走）',
   SRC.includes("key: 'body-' + panel"), 'panel remount');
-ok('大窗/页面宽屏两栏排版 + 画廊升到 3/4 列（容器查询，共享 dshMvBig）',
+ok('页面宽屏两栏排版 + 画廊升到 3/4 列（容器查询，dshMvBig）',
   SRC.includes('@container (min-width: 560px)') && SRC.includes('@container (min-width: 860px)') &&
-  SRC.includes('.dshMvBig .dshMvBody{display:grid'), 'responsive big grid');
-ok('图片可读性：大窗/页面展示图 112px / 风格条 96px / 缩略 88×50 / 预览整幅 contain；常态 56px 起步',
+  SRC.includes('.dshMvBig .dshMvBody{display:grid'), 'responsive grid');
+ok('图片可读性：页面展示图 112px / 风格条 96px / 缩略 88×50 / 预览整幅 contain；常态 56px 起步',
   SRC.includes('.dshMvBig .dshMvCardArt,.dshMvBig .dshMvCardImg{height:112px;}') &&
   SRC.includes('.dshMvBig .dshMvStrip{height:96px;}') &&
   SRC.includes('.dshMvBig .dshMvThumb{width:88px;height:50px;}') &&
@@ -772,7 +715,7 @@ ok('字典含分条与预设的中英文案（中文优先）',
     'popup.offlinePresets', 'popup.styles', 'popup.stylesPanel', 'popup.noSwatch', 'popup.styleNone',
     'popup.renderStart', 'popup.renderCancel', 'popup.preview', 'popup.previewNone',
     'popup.section.projects', 'popup.hasContact', 'popup.hasVideo',
-    'popup.fullscreen', 'popup.exitFullscreen',
+    'popup.heroStart', 'popup.heroSub', 'popup.heroChips', 'popup.heroNoPresets',
     'popup.tierCustom', 'popup.orientation', 'popup.w', 'popup.h']
     .every((k) => typeof calls.dictionaries.dict.zh[k] === 'string' &&
       typeof calls.dictionaries.dict.en[k] === 'string') &&
