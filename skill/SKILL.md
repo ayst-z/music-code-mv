@@ -117,9 +117,9 @@ node skills/music-code-mv/scripts/init.mjs --list-presets            # 列出预
 四套氛围预设：`neon-rain`（霓虹雨夜）、`ink-paper`（纸墨，浅色）、`phosphor`（磷光终端）、`dusk-lofi`（落日低保真）；另有一族**主流 AI 模型配色预设**：`claude`（橙白）、`deepseek`（蓝黑）、`gpt`（黑白）、`gemini`、`grok`、`mistral`、`llama`、`qwen`、`kimi`——每个都带品牌色提取来的六角色调色板、匹配气质的分镜骨架与 **Three.js 镜头逻辑**。
 细节与「怎么用才不浪费」见 `reference/presets.md`。Preset details live in `reference/presets.md`.
 
-生成的项目自带 Canvas2D 舞台、时间轴、带种子的 PRNG、歌词解析、风格辅助函数和一个可跑的演示场景。3D 按 `reference/threejs.md` 的**三级策略**爬：2D 数学 → 手写透视投影 → Three.js（只有光照/材质、实例化、后处理链、模型资产四者之一才升级）。
+生成的项目自带 Canvas2D 舞台、时间轴、带种子的 PRNG、歌词解析、风格辅助函数和一个可跑的演示场景。**3D 是默认，场面要豪华**：镜头默认从 Three.js 起步（粒子群、发光体、反射地面、连续相机运动），只有纯排版与纯数据镜头留在 2D——那里 3D 只会把字压花。决策梯与「豪华场面清单」（六条起步标准 + 过曝红线）见 `reference/threejs.md`；退级要写出理由。**一个镜头只用一种深度方案。**
 
-It creates a project with a Canvas2D stage, a timeline, a seeded PRNG, lyric parsing, style helpers and a working demo scene. Climb the 3D ladder in `reference/threejs.md`: 2D maths → manual perspective projection → Three.js (escalate only for lighting/materials, instancing, post chains, or assets).
+It creates a project with a Canvas2D stage, a timeline, a seeded PRNG, lyric parsing, style helpers and a working demo scene. **3D is the default and the scenes should look luxurious:** shots start from Three.js (particle fields, emissive bodies, a reflective floor, continuous camera movement); only pure typography and pure-data shots stay in 2D, where 3D would only smear the type. See `reference/threejs.md` for the decision ladder and the six-item luxury checklist (plus the over-exposure red line) — stepping down requires a written reason. **One depth solution per shot.**
 
 ### 3. 逐镜头搭建 (Build shot by shot)
 

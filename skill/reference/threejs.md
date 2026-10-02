@@ -2,15 +2,45 @@
 
 ## 3D 优先策略 (3D priority ladder)
 
-**默认不用 3D；要用就按梯子一级级往上爬，每级都有明确的升级理由。** 决策看"画面需要什么"，不看"什么技术酷"：
+**默认往 3D 画，场面要豪华。** 判断标准已经翻转：不再是「这一镜有没有理由升级到 3D」，而是「**这一镜有什么理由不用 3D**」。纯排版、纯数据、色卡巡游这类镜头才留在 2D——因为那里 3D 只会把字压花；其余一律上 3D。
 
-1. **2D 数学（首选 / first）** — SDF / 场 / 隐函数：一个向量表达式出全帧，NumPy 或 Canvas2D 都行。包络、干涉、心形、贝塞尔全部停在这一级。
-2. **手写透视投影（默认的"3D" / the everyday 3D）** — 需要深度、透视、绕转：`x' = x·f/z` + 画家算法（T5/T11），Canvas2D 或 NumPy 批量投影。线框、走廊、H 树、晶格、等距世界全够用；**比 Three.js 快一个量级、零依赖、天然确定性**。
-3. **Three.js（升级门槛 / escalate only when）** — 只有当镜头必须付出下面至少一项才升级：**光照/材质**（PBR、透明折射）、**实例化**（上万重复体且要深度排序）、**后处理链**（UnrealBloomPass 级辉光/景深）、**模型资产**（glTF）。缺任何一项，退回第 2 级。
+从高往低退，每退一级都要说出理由（写下它，写不出就别退）：
 
-**预算与红线：** SwiftShader 下 WebGL 后期链 960×540 ≈ 150–400 ms/帧，Canvas2D 手写 10–40 ms；NumPy 投影与 Canvas2D 同级。预设的 `three` 块（geometry/camera/post/roles）是"升级后怎么用这个配色说话"的说明书，见文末关联表。**一个镜头只用一种深度方案**——不要在 Three.js 场景里再手写第二套投影。
+1. **Three.js 场面（默认首选 / default first）** —— 要「豪华」就从这里起步：粒子群、发光体、反射地面、体积雾、景深、连续相机运动。光照/材质/实例化/后处理链是它的主场，`InstancedMesh` 让上万个重复体照样跑得动。
+2. **手写透视投影（轻量 3D / lighter 3D）** —— 单机位、元素少、要绝对确定性，或要和 Canvas2D 分层混排时用：`x' = x·f/z` + 画家算法（T5/T11），线框、走廊、晶格、等距世界在这一级完成。零依赖、天然确定性、比 Three.js 快一个量级。
+3. **2D 数学（按需例外 / by exception）** —— 只有纯排版与纯数据镜头留在这一级：字卡、色卡巡游、分栏对比、终端特写。SDF / 场 / 隐函数在这里是排版工具，不是偷懒。
 
-Default: no 3D. Climb the ladder deliberately — (1) 2D maths, (2) manual perspective projection for depth and orbits, (3) Three.js only when lighting/materials, instancing, a post-processing chain, or glTF assets are actually required. One depth solution per shot; the preset's `three` block then tells you how to speak with its palette.
+**一个镜头只用一种深度方案**——不要在 Three.js 场景里再手写第二套投影，那会露出两个灭点。
+
+### 豪华场面清单 (The luxury checklist)
+
+一个 3D 镜头做到「豪华」，至少命中下面六条（按性价比排序）：
+
+| # | 手段 | 为什么它显贵 |
+|---|---|---|
+| 1 | **至少三层深度**：前景遮挡体 → 中景主体 → 背景星尘/雾 | 空气透视立刻给画面厚度；只有一层就永远像贴图 |
+| 2 | **数量感**：`InstancedMesh` 或 `Points` 上千上万的重复体，种子 PRNG 分布 | 密度是「贵」的最直接信号；几百个点看着像 demo |
+| 3 | **发光与辉光**：emissive 材质 + `UnrealBloomPass`（threshold ≈ 0.6–0.85，strength ≈ 0.8–1.2） | 让光有体积；**红线：strength > 1.5 必过曝，白成一片反而廉价** |
+| 4 | **能反光的地面或一束扫过的光带** | 一次高光扫过 = 一整块画面被点亮，性价比最高的一招 |
+| 5 | **连续相机运动**：dolly + orbit 或 crane 组合，至少一条贯穿镜头的路径 | 静止机位是 3D 最大的破功；运动让深度被感知 |
+| 6 | **收束事件**：每镜一个可数的事件（点亮 / 翻转 / 坍缩 / 扫过 / 熄灭） | 没有事件的镜头是 bug（规矩 4），豪华不等于糊一团 |
+
+再往上是加分项：玻璃/金属二选一的高光材质、`fog` 做的体积感、post 链的 chroma 轻微错位、暗角与颗粒收边。
+
+### 预算怎么花 (Paying for it)
+
+3D 变默认之后，成本问题从「要不要」变成「**怎么排期**」：
+
+- **草稿分辨率迭代**：`--contact --w=480 --h=270`，每张联系表几秒钟；别用 4K 调构图。
+- **交付只跑一遍**：4K/120fps 放到最后一次性渲染，用 `--workers=8~12`。实测参考：9120 帧 4K120（全 FX）10 workers 367s ≈ 26 fps 吞吐。
+- **分段开关 fx**：`project.json` 里 `fx` 是基线，场景可以用自己的 `fx` 字段覆盖——排版镜头关掉 bloom/色差，3D 镜头再全开。
+- **后处理链按段给**：全链只给主镜头；过渡段与字卡段降级。
+- **复用几何与材质**：同一份 `BufferGeometry` 喂多个 mesh，别每帧 new。
+- 真跑不动时，**先降到第 2 级手写投影，再考虑砍构图**——别一上来就删掉深度层。
+
+`gl=auto` 检出空帧会自动回退软渲；`--gl=soft` 强制 SwiftShader。硬件 GL 与编码器的真实能力见 `probe.mjs` 的三行报告（能力门 / 实际显卡 / 编码器实测）。
+
+Default now is **3D, and luxurious**: the question flipped from "does this shot justify 3D" to "what reason does this shot have to *avoid* 3D" — only pure typography and pure-data shots stay in 2D, because 3D would smear the type. Start from Three.js, step down to manual projection only with a written reason, and keep 2D as the exception. Hit at least six items from the luxury checklist — three depth layers, thousands of instanced elements, controlled bloom (strength above ~1.5 blows out and looks cheap), a reflective floor or a sweeping light band, continuous camera movement, and one countable event per shot. Cost is now a scheduling problem: iterate at draft resolution, run 4K once with `--workers=8~12`, and toggle the `fx` chain per shot instead of globally. One depth solution per shot.
 
 ## 宿主页面 (Host page)
 
@@ -131,6 +161,6 @@ bloomPass.strength  = three.post?.bloom ?? 1.0;     // 后期跟预设走
 
 ## 成本 (Cost)
 
-全屏 WebGL 后期链是这条流水线里最贵的东西：在 SwiftShader 下 960×540 大约 150–400 ms/帧，而 Canvas2D 只要 10–40 ms。据此做预算，本质上是 2D 排版的镜头优先用 Canvas2D。
+3D 是默认之后，成本不再是「做不做」的理由，而是**排期问题**：SwiftShader 下 WebGL 后期链 960×540 约 150–400 ms/帧，Canvas2D 手写 10–40 ms——所以草稿阶段一律 `--contact --w=480 --h=270`，交付 4K 只跑一遍并用 `--workers=8~12`（实测 9120 帧 4K120 全 FX：10 workers 367s，约 26 fps）。纯排版镜头用各自的 `fx` 关掉 bloom/色差，把预算留给主 3D 镜头。
 
-A full-screen WebGL post chain is the most expensive thing in this pipeline: expect ~150–400 ms/frame at 960×540 under SwiftShader, versus 10–40 ms for Canvas2D. Budget accordingly, and prefer Canvas2D for shots that are fundamentally 2D typography.
+Now that 3D is the default, cost is a scheduling question rather than a blocker: expect ~150–400 ms/frame for a full WebGL post chain at 960×540 under SwiftShader versus 10–40 ms for Canvas2D. Iterate at draft resolution, run the 4K delivery pass once with `--workers=8~12`, and turn bloom/chroma off on typography shots so the budget goes to the hero 3D shots.
