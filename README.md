@@ -296,7 +296,7 @@ Every path resolves inside the workspace root and `..` escapes are rejected with
 
 ```bash
 node skill/scripts/init.mjs my-mv --preset=deepseek  # 套用预设 / apply a preset
-node skill/scripts/init.mjs --list-presets           # 列出 16 个预设 / list all 16
+node skill/scripts/init.mjs --list-presets           # 列出 17 个预设 / list all 17
 node tools/make-docs-images.mjs                      # 重出上面这些图 / regenerate these images
 python skill/scripts/audit-presets.py                # 配色纪律测试 R1–R4 / palette discipline test
 ```

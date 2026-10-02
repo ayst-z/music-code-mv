@@ -17,7 +17,7 @@
 | 许可 / license | MIT（`LICENSE`） |
 | 版本 / version | `package.json` → `0.2.0` |
 | CI / GitHub Actions | **无**（`.github/` 不存在；测试作为本地发布门禁运行 / none — tests run as a local publish gate） |
-| Releases | 暂无；大文件（音频母版、4K/HDR 成片）设计上走 Release 资产而非 git / none yet; big binaries go to Release assets |
+| Releases | **`v0.2.0` 已发布**：4 支小样共 10.1 MB（feature-demo 2.19MB、720p-v2 3.08MB、竖版 1.89MB、3D 展示 2.96MB）；母版仍走派生小样入库、原片挂 Release / four preview clips live on the release |
 | 话题 / topics | `dsh-plugin` `deepseek-harness` `deepseek` `dsh` `music-video` `canvas` `threejs` `ffmpeg` |
 
 ---
@@ -43,7 +43,7 @@ dsh-music-code-mv/
 ├── test/                 四套测试：privacy · studio · plugin · client
 └── skill/                ← skills/music-code-mv 的快照（sync 生成，勿手改 / generated, do not hand-edit）
     ├── SKILL.md
-    ├── presets/          16 个配色预设 / 16 palette presets
+    ├── presets/          17 个配色预设（含 fairy 角色智能体）/ 17 palette presets (incl. the fairy agent)
     ├── reference/        styles · techniques · threejs · numpy-pillow · presets …
     ├── scripts/          render.mjs · render-np.py · init.mjs · probe.mjs · audit-presets.py
     └── template/         工程骨架 / project skeleton
@@ -167,7 +167,7 @@ node test/plugin.test.mjs      # 七工具契约 + 真实渲染（预期 45 pass
 node test/client.test.mjs      # 浏览器半边（预期 28 passed）
 python skill/scripts/audit-presets.py   # 16 预设配色纪律 R1–R4，exit 0 = 全过
 ```
-预期 / expect: 全部 `0 failed`、audit `16 presets, 0 issues`。改过渲染内核再补一张联系表实测 / after touching the render kernel, also render one contact sheet for real.
+预期 / expect: 全部 `0 failed`、audit `17 presets, 0 issues`。改过渲染内核再补一张联系表实测 / after touching the render kernel, also render one contact sheet for real.
 
 ### 门 4 · 差异审阅 / Diff review
 ```bash
@@ -212,7 +212,7 @@ git revert <sha> && git push origin master     # 公开历史用 revert，不用
 ```bash
 # 创建发布 / create
 gh release create v0.2.0 \
-  --title "v0.2.0 — 16 presets + NumPy engine / 16 预设与第二引擎" \
+  --title "v0.2.0 — 17 presets, dual render engines, 3D showcase / 17 预设 · 双引擎 · 3D 展示" \
   --notes-file docs/VIDEO.md
 
 # 挂资产 / attach assets（母版、成片、封面）
@@ -222,7 +222,8 @@ gh release upload v0.2.0 audio/out/track.flac showcase/out/film-4k60.mp4
 gh release download v0.2.0
 ```
 
-当前状态 / status: 尚无 release；上述为约定通道。单文件 >100 MB 会被 GitHub 拒收——真有超大母版，先压分卷或用 LFS（本仓库未启用 LFS）。/ No releases yet; this is the agreed channel. GitHub rejects files >100 MB — split or use LFS (not enabled here).
+当前状态 / status: **`v0.2.0` 已发布并核验** —— `gh release list` 显示 Latest；`gh release view --json assets` 实测四件：`feature-demo-preview.mp4` 2,299,458 B、`preview-720p-v2.mp4` 3,232,320 B、`preview-vertical-9x16-720x1280.mp4` 1,980,462 B、`showcase-3d-preview.mp4` 3,100,967 B。<https://github.com/ayst-z/music-code-mv/releases/tag/v0.2.0>
+单文件 >100 MB 会被 git 拒收，母版（实测 953.56 MiB）只能挂 Release——但**当前选择是先派生 ≤5 MB 小样入库**，母版等需要时再单独 `gh release upload`。/ Masters (953.56 MiB measured) must go to Releases; today we ship derived ≤5 MB cuts instead and would upload a master with `gh release upload` only when asked.
 
 ---
 
