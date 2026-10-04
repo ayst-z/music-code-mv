@@ -42,6 +42,15 @@ HERE = Path(__file__).resolve().parent
 SKILL = HERE.parent
 PRESETS_DIR = SKILL / "presets"
 
+# 输出编码：管道/日志一律 UTF-8（DSH 与 CI 按 UTF-8 抓输出；Windows 默认 cp936
+# 会把方块进度条 ░ 直接炸成 UnicodeEncodeError）。TTY 保留控制台原编码，
+# 由 _Bar 的 ASCII 回落兜底。
+if not sys.stdout.isatty() and hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 DEFAULT_PALETTE = {
     "bg": "#05070d", "dim": "#1d4b73", "base": "#5eead4",
     "accent": "#22d3ee", "hot": "#ff2fa0", "text": "#e8f7ff",
@@ -60,6 +69,90 @@ def log(msg: str) -> None:
 def die(msg: str) -> "None":
     print("error: " + msg, file=sys.stderr, flush=True)
     sys.exit(1)
+
+
+class _Bar:
+    """单行进度条：样式对齐 lib/progress.mjs 的 createProgress。
+    TTY 每 0.15s 原地重绘一行；非 TTY（日志/CI）每 4s 打一行
+    `[label] [███░] 42.0%  840/2000  91.2 fps  ETA 0:31`。完成那拍绕过节流，
+    保证短任务也留下一条 100% 的日志行。"""
+
+    BAR = 24
+
+    def __init__(self, label: str, total: int) -> None:
+        self.label = label
+        self.total = max(1, int(total))
+        self.tty = sys.stdout.isatty()
+        self.last_draw = 0.0
+        self.last_done = 0
+        self.last_at = time.time()
+        self.ema = 0.0
+        self.max_len = 0
+        self.finished = False
+        self.final_drawn = False
+
+    @staticmethod
+    def _fmt(sec: float) -> str:
+        if not math.isfinite(sec) or sec < 0:
+            return "--:--"
+        s = int(round(sec))
+        h, m, s = s // 3600, (s % 3600) // 60, s % 60
+        return ("%d:%02d:%02d" % (h, m, s)) if h else ("%d:%02d" % (m, s))
+
+    def update(self, done: int, note: str = "") -> None:
+        now = time.time()
+        dt = now - self.last_at
+        if dt >= 0.25 and done > self.last_done:
+            inst = (done - self.last_done) / dt
+            self.ema = (self.ema * 0.75 + inst * 0.25) if self.ema else inst
+            self.last_done = done
+            self.last_at = now
+        final = done >= self.total
+        if final:
+            if self.final_drawn:
+                return        # 完成只画一次（ffmpeg 的 frame= 与 progress=end 会各触发一次）
+            self.final_drawn = True
+        if not final:
+            if self.tty and now - self.last_draw < 0.15:
+                return
+            if not self.tty and now - self.last_draw < 4.0:
+                return
+        self.last_draw = now
+        pct = min(1.0, done / self.total)
+        filled = int(round(pct * self.BAR))
+        bar = "\u2588" * filled + "\u2591" * (self.BAR - filled)
+        line = ("  [%s] %5.1f%%  %*d/%d"
+                % (bar, pct * 100, len(str(self.total)), done, self.total))
+        if self.ema > 0:
+            line += "  %.1f fps" % self.ema
+            line += "  ETA " + self._fmt((self.total - done) / self.ema)
+        else:
+            line += "  ETA --:--"
+        if note:
+            line += "  " + note
+        # 控制台编码画不出方块条（Windows TTY 常见）→ 降级成 ASCII 条，进度不丢
+        out = line
+        enc = getattr(sys.stdout, "encoding", None) or "utf-8"
+        try:
+            out.encode(enc)
+        except (UnicodeEncodeError, LookupError):
+            out = out.replace("\u2588", "#").replace("\u2591", "-")
+        if self.tty:
+            pad = " " * max(0, self.max_len - len(out))
+            sys.stdout.write("\r" + out + pad)
+            sys.stdout.flush()
+            self.max_len = max(self.max_len, len(out))
+        else:
+            print("[%s] %s" % (self.label, out.strip()), flush=True)
+
+    def finish(self) -> None:
+        """清掉 TTY 上的驻留行；非 TTY 什么都不做（最后一条 100% 已经落日志）。"""
+        if self.finished:
+            return
+        self.finished = True
+        if self.tty:
+            sys.stdout.write("\r" + " " * (self.max_len + 2) + "\r")
+            sys.stdout.flush()
 
 
 # ---------------------------------------------------------------- project load
@@ -154,12 +247,16 @@ def frame_path(project: Path, frame: int) -> Path:
     return project / "frames" / (("f%05d." % frame) + ext)
 
 
-def render_frame(project: Path, frame: int, force: bool = False) -> str:
-    """Render one frame into the cache. Returns 'cache' or 'rendered'."""
+def render_frame(project: Path, frame: int, force: bool = False, cfg: dict | None = None) -> str:
+    """Render one frame into the cache. Returns 'cache' or 'rendered'.
+
+    cfg 显式下传：--w/--h/--fps/--duration 是**进程内**对 load_project 缓存的就地覆盖，
+    子进程 worker 拿不到 —— 不传就会退回 project.json 的原尺寸（实测 1920×1080 覆盖
+    在 worker 里渲成 640×360，管道与 -s 错位，成片只剩 20 帧）。"""
     out = frame_path(project, frame)
     if out.exists() and not force:
         return "cache"
-    cfg = load_project(project)
+    cfg = cfg if cfg is not None else load_project(project)
     mod = load_render_module(project)
     env = build_env(cfg, frame)
     try:
@@ -435,7 +532,8 @@ def encode_video(project: Path, cfg: dict, out: Path, audio: str | None) -> None
     n = n_frames(cfg)
     sample = frame_path(project, 0)                      # .../frames/f00000.png|jpg
     pattern = str(sample).replace(sample.name, "f%05d" + sample.suffix)
-    args = [ff, "-y", "-loglevel", "error",
+    # -progress pipe:1：进度走 stdout（frame=），-nostats 关掉 stderr 上的重复统计
+    args = [ff, "-y", "-loglevel", "error", "-nostats", "-progress", "pipe:1",
             "-framerate", str(cfg["fps"]), "-start_number", "0", "-i", pattern]
     if audio:
         args += ["-i", audio, "-map", "0:v:0", "-map", "1:a:0"]
@@ -446,10 +544,33 @@ def encode_video(project: Path, cfg: dict, out: Path, audio: str | None) -> None
         args += ["-c:a", "aac", "-b:a", "192k", "-shortest"]
     args += ["-frames:v", str(n), "-movflags", "+faststart", str(out)]
     out.parent.mkdir(parents=True, exist_ok=True)
-    proc = subprocess.run(args, capture_output=True, text=True)
-    if proc.returncode != 0:
-        tail = "\n".join((proc.stderr or "").strip().splitlines()[-8:])
-        die("ffmpeg failed:\n" + tail)
+    # 编码不再是静默步：解析 frame= 实时更新进度条（与 runFfmpeg 的口径一致）
+    bar = _Bar("encode", n)
+    proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                            text=True, encoding="utf-8", errors="replace")
+    err_tail: list = []
+    for line in proc.stdout:
+        s = line.strip()
+        if not s:
+            continue
+        if s.startswith("frame="):
+            try:
+                bar.update(min(n, int(s.split("=", 1)[1].split()[0])))
+            except ValueError:
+                pass
+        elif s == "progress=end":
+            bar.update(n)
+        else:
+            # stdout 混进来的非进度行 = ffmpeg 的报错/告警；progress 字段（fps= speed= …）不算
+            head, sep, _rest = s.partition("=")
+            if not (sep and " " not in s and head.replace("_", "").isalnum()):
+                err_tail.append(s)
+                if len(err_tail) > 60:
+                    err_tail.pop(0)
+    rc = proc.wait()
+    bar.finish()
+    if rc != 0:
+        die("ffmpeg failed:\n" + "\n".join(err_tail[-8:]))
     log("encoded: %s" % out)
     # verify: duration + streams, same as the Chrome engine's finish step
     chk = subprocess.run([ff, "-hide_banner", "-i", str(out)], capture_output=True, text=True)
@@ -476,14 +597,16 @@ def _stats_of(arr_u16) -> dict:
     }
 
 
-def render_frame_bytes(project: Path, frame: int, depth: int = 8, stats: bool = False):
+def render_frame_bytes(project: Path, frame: int, depth: int = 8, stats: bool = False,
+                       cfg: dict | None = None):
     """内存里渲一帧并直接产出给 ffmpeg 的裸字节 —— **不写盘**（流式输出 / streaming）。
 
     depth < 10 → rgb24；depth >= 10 → rgb48le（按 v*257 线性扩到 16 位，
     ffmpeg 再落到 yuv420p10le/12le）。HDR 走这条，因为 8 位 PNG 装不下 10 位。
     stats=True 时同时返回该帧的 Vivid 元数据采样（用于 --hdr-vivid）。
+    cfg 显式下传：原因同 render_frame 的 docstring（worker 进程读不到 CLI 覆盖）。
     """
-    cfg = load_project(project)
+    cfg = cfg if cfg is not None else load_project(project)
     mod = load_render_module(project)
     env = build_env(cfg, frame)
     try:
@@ -510,8 +633,9 @@ def render_frame_bytes(project: Path, frame: int, depth: int = 8, stats: bool = 
     return (data, st) if stats else data
 
 
-def _bytes_worker(project_str: str, frame: int, depth: int, stats: bool = False):
-    return render_frame_bytes(Path(project_str), frame, depth, stats)
+def _bytes_worker(project_str: str, frame: int, depth: int, stats: bool = False,
+                  cfg: dict | None = None):
+    return render_frame_bytes(Path(project_str), frame, depth, stats, cfg)
 
 
 def render_video_stream(project: Path, out: Path, audio: str | None, workers: int,
@@ -595,18 +719,26 @@ def render_video_stream(project: Path, out: Path, audio: str | None, workers: in
             })
 
     t0 = time.time()
+    bar = _Bar("stream", n)      # 进度 = 已写入 ffmpeg stdin 的帧数 / 总帧数
+    expect = w * h * (6 if depth >= 10 else 3)   # 每帧裸字节数，用于核对送入量
+    sent = 0
+    sent_frames = 0
     proc = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
                             stderr=subprocess.PIPE)
     try:
         if eff == 1:
             for i in range(n):
-                data = render_frame_bytes(project, i, depth, vivid)
+                data = render_frame_bytes(project, i, depth, vivid, cfg)
                 if vivid:
                     data, st = data
                     note(i, st)
                 proc.stdin.write(data)
-                if (i + 1) % 60 == 0 or i + 1 == n:
-                    log("  %d/%d frames" % (i + 1, n))
+                sent += len(data)
+                sent_frames += 1
+                if sent_frames == 1 and len(data) != expect:
+                    log("stream: frame0 = %d bytes, expected %d — input framing mismatch!"
+                        % (len(data), expect))
+                bar.update(i + 1)
         else:
             from concurrent.futures import ProcessPoolExecutor
             from collections import deque
@@ -617,15 +749,22 @@ def render_video_stream(project: Path, out: Path, audio: str | None, workers: in
                 nxt = 0
                 for done in range(n):
                     while nxt < n and len(pending) < window:
-                        pending.append(pool.submit(_bytes_worker, pstr, nxt, depth, vivid))
+                        pending.append(pool.submit(_bytes_worker, pstr, nxt, depth, vivid, cfg))
                         nxt += 1
                     data = pending.popleft().result()
                     if vivid:
                         data, st = data
                         note(done, st)
                     proc.stdin.write(data)
-                    if (done + 1) % 60 == 0 or done + 1 == n:
-                        log("  %d/%d frames" % (done + 1, n))
+                    sent += len(data)
+                    sent_frames += 1
+                    if sent_frames == 1 and len(data) != expect:
+                        log("stream: frame0 = %d bytes, expected %d — input framing mismatch!"
+                            % (len(data), expect))
+                    bar.update(done + 1)
+    except BrokenPipeError:
+        # ffmpeg 先死了：吞掉管道错，走下面 rc != 0 分支把它的 stderr 原文报出来
+        pass
     finally:
         try:
             proc.stdin.close()
@@ -633,8 +772,12 @@ def render_video_stream(project: Path, out: Path, audio: str | None, workers: in
             pass
         err = proc.stderr.read().decode("utf-8", "replace") if proc.stderr else ""
         rc = proc.wait()
+    bar.finish()
     if rc != 0:
         die("ffmpeg failed:\n" + "\n".join(err.strip().splitlines()[-8:]))
+    # 送入量核对：进度条计的是循环次数，这里计的是真进管道的字节
+    log("stream: piped %d/%d frames, %.1f MB (expect %.1f MB)"
+        % (sent_frames, n, sent / 1e6, n * expect / 1e6))
     dt = time.time() - t0
     log("streamed+encoded in %.1fs (%.0f ms/frame, frames on disk: 0)"
         % (dt, dt * 1000 / max(1, n)))
@@ -679,11 +822,12 @@ def render_video(project: Path, out: Path, audio: str | None,
             % (workers, eff, n))
     t0 = time.time()
     rendered = cached = 0
+    bar = _Bar("render", n)                     # pct + ETA：两个分支共用一条单行进度
     if eff > 1:
         from concurrent.futures import ProcessPoolExecutor
         pstr = str(project)
         with ProcessPoolExecutor(max_workers=eff) as pool:
-            futures = [pool.submit(_worker, pstr, fi, force) for fi in range(n)]
+            futures = [pool.submit(_worker, pstr, fi, force, cfg) for fi in range(n)]
             done = 0
             for fut in futures:
                 status = fut.result()
@@ -692,29 +836,24 @@ def render_video(project: Path, out: Path, audio: str | None,
                     rendered += 1
                 else:
                     cached += 1
-                if done % 60 == 0 or done == n:
-                    log("  %d/%d frames" % (done, n))
+                bar.update(done)
     else:
-        last = 0.0
         for fi in range(n):
-            status = render_frame(project, fi, force)
+            status = render_frame(project, fi, force, cfg)
             if status == "rendered":
                 rendered += 1
             else:
                 cached += 1
-            done = fi + 1
-            pct = done / n
-            if time.time() - last > 1.0 or done == n:
-                last = time.time()
-                log("  %d/%d frames (%.0f%%)" % (done, n, pct * 100))
+            bar.update(fi + 1)
+    bar.finish()
     dt = time.time() - t0
     log("frames: %d rendered, %d from cache, %.1fs (%.0f ms/frame)"
         % (rendered, cached, dt, (dt * 1000 / max(1, rendered)) if rendered else 0))
     encode_video(project, cfg, out, audio)
 
 
-def _worker(project_str: str, frame: int, force: bool) -> str:
-    return render_frame(Path(project_str), frame, force)
+def _worker(project_str: str, frame: int, force: bool, cfg: dict | None = None) -> str:
+    return render_frame(Path(project_str), frame, force, cfg)
 
 
 # ---------------------------------------------------------------- scaffold
@@ -1028,6 +1167,9 @@ def main() -> None:
     ap.add_argument("--stream", action="store_true",
                     help="流式输出：帧直管道给 ffmpeg，frames/ 一个字节都不写（省盘；"
                          "代价是没有帧缓存 = 不能断点续渲）")
+    ap.add_argument("--no-stream", dest="no_stream", action="store_true",
+                    help="关掉默认的流式化，强制走帧缓存路径（可断点续渲 + 增量复用；"
+                         "10/12-bit 与 HDR 输出除外——那条路只有流式 libx265)")
     ap.add_argument("--depth", type=int, default=8, help="输出位深 8|10|12（10/12 自动走流式）")
     ap.add_argument("--hdr10", action="store_true", help="10/12-bit 时按 HDR10 打标（BT.2020 + PQ）")
     ap.add_argument("--hdr-vivid", action="store_true",
@@ -1089,6 +1231,13 @@ def main() -> None:
     depth = max(8, int(args.depth))
     if args.hdr_vivid:
         depth = max(depth, 10)
+    if args.hdr10:
+        # P1-R2（np 侧实读确认的连带问题）：--hdr10 以前既不抬位深、也不进流式分发 ——
+        # depth=8 时被静默丢弃，出的片根本不是 HDR。现在抬到 10-bit：
+        # 必然走流式（np 唯一的 10-bit 路径就是 libx265），hdr10 永不落空，
+        # 也不可能撞上非 libx265 编码器。
+        depth = max(depth, 10)
+        log("hdr10: depth -> %d (10-bit libx265 stream path)" % depth)
 
     if args.contact:
         out = _out_path(project, args.out) if args.out else None
@@ -1099,7 +1248,38 @@ def main() -> None:
                       force)
         return
     out = _out_path(project, args.out) if args.out else (project / "out" / "video.mp4")
-    if args.stream or depth >= 10 or args.hdr_vivid:
+
+    # ---- 流式默认化（a/c 拍板：mp4 直出 + 本档位无可续缓存 → 自动 --stream）----
+    # 主信号：**写入前**读到的 prev == 本档位 stamp，且 frames/ 真有帧文件 ——
+    # 有可续/可增量的缓存走缓存路径，否则一遍过直喂 ffmpeg（帧缓存 0 字节）。
+    # 注意 marker 在分发前已写盘，必须用写入前读到的 prev，不能写完再读；
+    # v1 不做"签名失配也判流式"（c 拍板：中断续跑的价值 > 白写盘的代价）。
+    try:
+        resumable = (prev == stamp) and any(True for _ in marker.parent.glob("f?????*"))
+    except Exception:
+        resumable = False
+    if depth >= 10 or args.hdr_vivid:
+        # 10/12-bit 只有流式路径能出（缓存路径的 encode_video 是 8-bit libx264）
+        stream_on = True
+        if args.no_stream:
+            log("stream: forced for depth=%d/hdr output (cache path encodes 8-bit only); "
+                "--no-stream ignored" % depth)
+        else:
+            log("stream: on (depth=%d/hdr output — 10-bit libx265 stream path)" % depth)
+    elif args.no_stream:
+        stream_on = False
+        log("stream: off (--no-stream — frame cache kept: resumable + incremental)")
+    elif args.stream:
+        stream_on = True
+        log("stream: on (--stream — one-shot delivery, 0-byte frame cache)")
+    else:
+        stream_on = not resumable
+        log("stream: auto-%s (%s)" % (
+            "on" if stream_on else "off",
+            "no resumable frame cache for this render pass -> one-shot delivery"
+            if stream_on else
+            "resumable frame cache found (this render pass) -> incremental + resumable"))
+    if stream_on:
         render_video_stream(project, out, args.audio, max(1, args.workers), depth,
                             args.hdr10, vivid=args.hdr_vivid)
         return

@@ -148,6 +148,9 @@ def render(total_sec, sr, bpm, seed, light_every, fadeIn, fadeOut, plan=None):
     t0 = 0
     while t0 < n and bar_i < len(sections):
         seg_sec, light = sections[bar_i]
+        # 生成过程按 section 报进度 i/N（flush=True：管道/日志下也实时可见）
+        print("  [music] section %d/%d  %s" % (bar_i + 1, len(sections),
+                                               "light" if light else "dark"), flush=True)
         seg_n = min(int(seg_sec * sr), n - t0)
         if seg_n <= 0:
             break

@@ -99,6 +99,27 @@ export async function pickEncoder(ffmpeg, requested = 'auto') {
 }
 
 /**
+ * P1-R2: `--hdr10` 只有 libx265 能写出合规母版 —— qsv/nvenc/amf 嵌不了
+ * HDR10 mastering SEI，会产出「标了 HDR 但没有元数据」的坏片（原先是 WARNING，
+ * 按 docs/CODE-REVIEW.md P1-R2 改为硬失败，提示一律带 --encoder=libx265）。
+ *
+ * buildEncodeArgs 入口兜底调用（编码阶段必炸，坏母版绝不落盘）；
+ * 要在**渲染开始前**失败的调用方（render.mjs 等入口）在 pickEncoder 之后
+ * 直接调本函数即可 —— 校验是纯函数，零副作用。
+ * qsv 的失败预告与本函数同口径：会失败，不是"降级建议"。
+ */
+export function validateEncodeOptions(opts = {}) {
+  const { hdr10 = false, encoder } = opts;
+  if (hdr10 && encoder && encoder.id !== 'libx265') {
+    const why = encoder.family === 'qsv'
+      ? ' (QSV cannot embed HDR10 mastering metadata: this run would fail / produce a broken master)'
+      : '';
+    throw new Error('--hdr10 requires libx265, got "' + encoder.id +
+      '". Re-run with --encoder=libx265' + why);
+  }
+}
+
+/**
  * Build the ffmpeg argument list.
  * hdr10 => 10-bit HEVC, Rec.2020 primaries, PQ transfer, HDR10 mastering metadata.
  */
@@ -113,6 +134,8 @@ export function buildEncodeArgs(opts) {
     // f%05d files on disk, appending stale frames from a longer previous run
     frames = null
   } = opts;
+  // P1-R2 兜底：走到这里必须是 libx265 + hdr10；入口侧提前调 validateEncodeOptions 可在渲染前失败
+  validateEncodeOptions(opts);
 
   const args = ['-y', '-loglevel', 'error', '-framerate', String(fps),
     '-start_number', String(startNumber), '-i', framePattern];

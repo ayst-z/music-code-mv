@@ -22,6 +22,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createProgress } from './lib/progress.mjs';
 
 const DEFAULT_BASE = process.env.MIMO_TTS_BASE || 'http://127.0.0.1:19387';
 const SYNTH = '/plugins/xiaomi-mimo-tts/synthesize';
@@ -138,7 +139,10 @@ if (arg('batch')) {
   const base = resolveVoice();
   console.log('voice: ' + voiceLabel(base));
   let total = 0;
-  for (const item of manifest) {
+  // 批量也上进度条：total = 条数（每条合成是秒级网络往返，ETA 按完成条数估）
+  const bar = createProgress({ total: manifest.length, label: 'tts' });
+  for (let i = 0; i < manifest.length; i++) {
+    const item = manifest[i];
     if (!item || typeof item.file !== 'string' || typeof item.text !== 'string') {
       console.error('每一项都要有 file 与 text / each item needs file and text');
       process.exit(1);
@@ -151,7 +155,9 @@ if (arg('batch')) {
     const n = await synth(item.text, item.file, v);
     total += n;
     console.log(item.file + '  ' + n + ' bytes');
+    bar.update(i + 1, { note: item.file });
   }
+  bar.done();
   console.log('done: ' + manifest.length + ' clips, ' + total + ' bytes');
   process.exit(0);
 }
