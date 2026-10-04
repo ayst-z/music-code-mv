@@ -104,11 +104,26 @@ The `fx` block is applied after `render_at` in a fixed chain — bloom, chroma, 
 
 ## 流式输出 · hi-res · HDR (Streaming, hi-res and HDR)
 
-**流式输出 / streaming —— 省硬盘。** `--stream` 把帧渲染出来后**直接管道给 ffmpeg**，`frames/` 一个字节都不写（4K120 一次渲的帧缓存实测 17–18 GB → 0）。代价是诚实的：**没有帧缓存 = 不能断点续渲**，重编码必须重渲——把 `--stream` 当成「一遍过」的交付 pass，迭代期仍然用带缓存的常规路径。
+**流式输出 / streaming —— 默认就走它。** 帧渲出来后**直接管道给 ffmpeg**，`frames/` 一个字节都不写（4K120 一次渲的帧缓存实测 17–18 GB → 0）。现在的默认策略是**自动二选一**：
 
 ```bash
-python scripts/render-np.py --project=demo --out=out/v.mp4 --stream --workers=8
+python scripts/render-np.py --project=demo --out=out/v.mp4 --workers=8   # 默认：自动判定
+python scripts/render-np.py ... --no-stream                              # 强制走帧缓存（可续跑 + 可增量）
+python scripts/render-np.py ... --stream                                 # 强制流式
 ```
+
+| 决策日志（每次跑都打一行） | 含义 |
+|---|---|
+| `stream: auto-on (no resumable frame cache …)` | 首渲/直出 → 流式，零写盘 |
+| `stream: auto-off (resumable frame cache found …)` | 这一档有可续缓存 → 增量 + 断点续跑 |
+| `stream: off (--no-stream …)` | 你显式要求缓存 |
+| `stream: forced for depth=10/hdr output` | hi-res/HDR 只有流式路径（缓存路只编 8-bit），`--no-stream` 被如实覆盖 |
+
+**墙钟实测**（同工程 1920×1080@30、180 帧、8 workers、`--force` 消缓存假象、前后确认无争抢 ffmpeg）：**流式 52.4s / 0 字节写盘** vs **缓存 65.9s / 678 MB** → **快 13.5s（−20.5%）**；不带参数复跑缓存路径只要 26.8s（`0 rendered, 180 from cache`，只剩编码）——这正是 auto-off 要保护的场景。诚实代价不变：**流式没有帧缓存 = 不能断点续渲**（昨天就有一次编码中途被杀，救场的是缓存）；迭代期靠 auto-off 自动落在缓存路。
+
+**输出步骤全程有进度条**（同一套 pct/ETA/fps 口径）：`[render]`（渲染两分支共用）、`[encode]`（解析 ffmpeg `-progress pipe:1`）、`[stream]`（按 stdin 写入帧数）、`[tts]`（逐条文件名）、`[music]`（按 section）。非 TTY（管道/工作室 job log）每 4s 落一行，完成拍必落 100%。
+
+**尺寸覆盖可靠**：`--w/--h` 等 CLI 覆盖会贯通到 worker（曾有过只覆盖主进程、worker 读回原尺寸导致成片只剩 20 帧的 P0）；两条常驻诊断 `frame0 = N bytes, expected M` 与 `piped X/Y frames, A MB (expect B MB)` 秒定位这类尺寸不匹配。
 
 **hi-res 支持**：`--w --h --fps --duration --format=png|jpeg` 全部可覆盖 `project.json`（4K120 就是 `--w=3840 --h=2160 --fps=120`）。**换档会自动强制重渲**：引擎在 `frames/.renderpass` 记一份「渲染档位指纹」（尺寸/帧率/时长/超采样/帧容器），与当前不符就拒绝复用旧帧——否则 CLI 覆盖会拿到上一档的缓存。hi-res 下帧容器用 `--format=jpeg`（quality 92、4:4:4）比 PNG 快约 3 倍；PNG 的 `pngLevel` 只影响写盘速度、不影响画质（PNG 恒无损）。
 
@@ -129,7 +144,7 @@ python scripts/render-np.py --project=demo --out=out/v.mp4 --stream --workers=8
 
 **并行的坑**：小片子开大并行是**负优化**（进程启动比渲一帧还贵）。引擎按「每个 worker 至少 16 帧」自动封顶并打印 `workers: 8 -> 4 (only 60 frames)`。
 
-Streaming hands frames straight to ffmpeg so `frames/` stays at zero bytes (17–18 GB saved on a 4K120 pass) at the cost of resumability. `--w --h --fps --duration --format` override the project for hi-res, and a render-pass fingerprint in `frames/.renderpass` refuses to reuse cache from a different pass. HDR (`--depth=10|12 --hdr10`) must stream because 8-bit PNG cannot hold 10 bits: uint8 → `v*257` → `rgb48le` → `yuv420p10le` with BT.2020/PQ tagging. `--hdr-vivid` additionally samples dynamic metadata per frame and writes a `.hdrvivid.json` sidecar — this build of ffmpeg has no CUVA SEI encoder, so the honest deliverable is an HDR10 base layer plus the Vivid sidecar. Measured: `apply_fx` 76→16 ms (bloom at quarter resolution), vignette/scanline cached to zero, end-to-end 46→18 ms/frame, 4K120 HDR10 streaming at 51 ms/frame with zero disk.
+Streaming is the default for mp4 output: frames pipe straight to ffmpeg and `frames/` stays at zero bytes (17–18 GB saved on a 4K120 pass). The engine picks between streaming and a resumable frame cache automatically and prints which (auto-on / auto-off / `--no-stream` / forced for 10-bit+HDR); measured head-to-head, streaming took **52.4 s with zero disk writes vs 65.9 s and 678 MB cached (−20.5 %)**, while an incremental cache re-run took 26.8 s (`0 rendered, 180 from cache`) — which is exactly what auto-off protects. The honest tradeoff stays: streaming cannot resume mid-run. Every output stage prints the same progress-bar style (`[render]`, `[encode]`, `[stream]`, `[tts]`, `[music]`), falling back to one log line every 4 s when stdout is not a TTY. `--w --h --fps --duration --format` override the project and now reach the workers too (a P0 where overrides stayed in the parent used to cut masters down to 20 frames); `frame0 = N bytes, expected M` and `piped X/Y frames` diagnose framing mismatches immediately. HDR (`--depth=10|12 --hdr10`) streams by necessity: uint8 → `v*257` → `rgb48le` → `yuv420p10le` with BT.2020/PQ tagging; `--hdr-vivid` samples dynamic metadata per frame and writes a `.hdrvivid.json` sidecar — this build of ffmpeg has no CUVA SEI encoder, so the honest deliverable is an HDR10 base layer plus the Vivid sidecar. Measured: `apply_fx` 76→16 ms (bloom at quarter resolution), vignette/scanline cached to zero, end-to-end 46→18 ms/frame, 4K120 HDR10 streaming at 51 ms/frame with zero disk.
 
 ## NumPy 逐像素技法 (Per-pixel techniques)
 
