@@ -155,6 +155,74 @@ class _Bar:
             sys.stdout.flush()
 
 
+# ---- 子帧平均（temporal supersampling）：质感优先，成本**只记录不决策** ----
+# 统计必须在**主进程**聚合：多进程 worker 里的 _MF 改动不会跨进程回来，
+# 所以渲染函数只把 k 写进 _LAST_K 随结果返回，由调用方 _mf_add 统一累加。
+_MF = {"calls": 0, "frames": 0, "rframes": 0, "ksum": 0, "kmin": None, "kmax": 0}
+_LAST_K = 0
+
+
+def _reset_blur_stats() -> None:
+    global _LAST_K
+    _MF.update({"calls": 0, "frames": 0, "rframes": 0, "ksum": 0, "kmin": None, "kmax": 0})
+    _LAST_K = 0
+
+
+def _mf_add(k) -> None:
+    """调用方聚合：k=0 表示该帧来自缓存（没有子帧渲染）。"""
+    k = int(k or 0)
+    if k > 0:
+        _MF["calls"] += k
+        _MF["ksum"] += k
+        _MF["kmin"] = k if _MF["kmin"] is None else min(_MF["kmin"], k)
+        _MF["kmax"] = max(_MF["kmax"], k)
+        _MF["rframes"] += 1
+    _MF["frames"] += 1
+
+
+def _log_blur(shutter: float, samples, tol: int, n: int, wall: float) -> None:
+    """成本日志只作信息（排期要用），绝不参与采样决策（用户：不要为性能砍效果）。"""
+    rfr = max(1, _MF["rframes"])
+    avg = int(round(_MF["calls"] / rfr)) if _MF["rframes"] else 0
+    auto = isinstance(samples, str)
+    if not _MF["rframes"]:
+        tag = "auto (all %d frames reused from cache)" % _MF["frames"]
+    elif auto:
+        tag = "auto converged %d..%d, tol %d" % (_MF["kmin"], _MF["kmax"], tol)
+    else:
+        tag = "fixed %d" % int(samples)
+    reused = (", %d frames reused" % (_MF["frames"] - _MF["rframes"])
+              if _MF["frames"] > _MF["rframes"] else "")
+    log("shutter: %g samples=%d (%s) — %d frames x %d sub-frames = %d render_at calls, "
+        "%d ms/frame%s%s"
+        % (shutter, avg, tag, n, avg, _MF["calls"],
+           int(round(wall * 1000.0 / max(1, n))), reused,
+           "  |  pdoom tiers: 12 static / 36 normal / 108-324 whip" if auto else ""))
+
+
+class _AutoOffsets:
+    """auto 采样的子帧位置序列：端点先行 [-h, +h]，其后反复二分最粗间隙 ——
+    **任意前缀都均匀铺满 [-h, +h]**，所以「渲一个、与已有均值比一次」能边渲边收敛，
+    而序列只由 shutter 决定 → 任何进程重算结果一致（确定性）。
+    上限 324 = pdoom 甩镜/急推档；收敛判据只看画面（tol），无时间/次数预算。
+    固定 --samples=N 走 linspace（含两端点），严格按规格均匀铺满快门窗口。"""
+
+    def __init__(self, shutter: float) -> None:
+        h = shutter / 2.0
+        self.vals = [-h, h]
+        self.gaps = [(-h, h)]
+
+    def get(self, i: int) -> float:
+        while i >= len(self.vals):
+            self.gaps.sort(key=lambda g: (-(g[1] - g[0]), g[0]))
+            lo, hi = self.gaps.pop(0)
+            mid = (lo + hi) * 0.5
+            self.vals.append(mid)
+            self.gaps.append((lo, mid))
+            self.gaps.append((mid, hi))
+        return self.vals[i]
+
+
 # ---------------------------------------------------------------- project load
 
 _cache: dict = {}
@@ -234,6 +302,98 @@ def shot_label(mod, t: float, env: dict) -> str:
     return ""
 
 
+def _render_at_img(project: Path, cfg: dict, frame: int, t: float | None,
+                   strict_rgb: bool):
+    """渲一个子帧 → PIL 图（校验 + fx 都在这里，缓存/流式/子帧三路共用）。
+    t=None 用 frame/fps；给浮点时刻即渲快门窗口内的子帧。strict_rgb 保留
+    render_frame 的原契约（非 RGB 直接 die），字节路径保持宽松 convert。"""
+    mod = load_render_module(project)
+    env = build_env(cfg, frame)
+    if t is not None:
+        env["t"] = float(t)
+    try:
+        img = mod.render_at(env["t"], env)
+    except Exception as e:
+        die("render_at(%g) raised: %r" % (env["t"], e))
+    if not isinstance(img, Image.Image):
+        die("render_at(%g) returned %r, expected a PIL.Image" % (env["t"], type(img)))
+    if img.size != (cfg["width"], cfg["height"]):
+        die("render_at(%g) returned %dx%d, expected %dx%d"
+            % (env["t"], img.size[0], img.size[1], cfg["width"], cfg["height"]))
+    if strict_rgb and img.mode != "RGB":
+        die("render_at(%g) returned mode %s, expected RGB (call .convert('RGB'))"
+            % (env["t"], img.mode))
+    fx = cfg.get("fx") or {}
+    if fx:
+        arr = apply_fx(np.asarray(img.convert("RGB")).astype(np.float32), fx, frame)
+        img = Image.fromarray(arr.astype(np.uint8), "RGB")
+    return img
+
+
+def _average_u8(project: Path, cfg: dict, frame: int, strict_rgb: bool):
+    """子帧平均（temporal supersampling）：float32 累加 K 个子帧再除 K → uint8 图。
+
+    samples=auto：**只看画面**收敛 —— 从第 4 个子帧起，新子帧与**已有均值**的最大通道差
+    < tol（0..255 计，即 tol/255）就停（加入该子帧后停）；下限 4、上限 324（pdoom 甩镜档），
+    没有任何时间/次数预算（质感优先，成本只进日志）。注意判据刻意**不用**相邻两次均值之差：
+    那个差有 ≤255/k 的上界，tol=3 时 k 永远到不了 85，108–324 档在数学上不可达。
+    samples=N：N 个子帧含端点均匀铺满 [t-h·dt, t+h·dt]。
+    返回 (PIL RGB 图, k_used)；调用统计进 _MF。"""
+    shutter = float(cfg["_shutter"])
+    samples = cfg.get("_samples", "auto")
+    tol = float(cfg.get("_tol", 3))
+    fps = cfg["fps"]
+    dt = 1.0 / fps
+    t_center = frame / fps
+    auto = isinstance(samples, str)
+    offs = None
+    fixed = None
+    if auto:
+        offs = _AutoOffsets(shutter)
+        cap = 324
+    else:
+        kn = int(samples)
+        h = shutter / 2.0
+        fixed = [0.0] if kn <= 1 else [-h + shutter * (i / (kn - 1)) for i in range(kn)]
+        cap = kn
+    acc = None
+    mean = None
+    k = 0
+    prev = None
+    while k < cap:
+        off = offs.get(k) if auto else fixed[k]
+        img = _render_at_img(project, cfg, frame, t_center + off * dt, strict_rgb)
+        f = np.asarray(img.convert("RGB"), dtype=np.float32)
+        if auto and prev is not None and (k + 1) >= 4 and float(np.abs(f - prev).max()) < tol:
+            # 判据 = **新子帧 vs 已有均值**（不是相邻两次均值之差）：
+            # 相邻均值差 ≤ 255/k —— tol=3 时 k 永远到不了 85，108–324 甩镜档在数学上不可达；
+            # 样本对均值不随 1/k 缩水：运动越猛越晚收敛（甩镜帧会一路采到 324 档），
+            # 静止帧 4 档即停。加入这个「改动 < tol」的子帧后再停（规格：加了但改动小）。
+            mean = (acc + f) / (k + 1)
+            k += 1
+            break
+        acc = f if acc is None else acc + f
+        k += 1
+        mean = acc / k
+        prev = mean
+    out = np.rint(np.clip(mean, 0, 255)).astype(np.uint8)
+    return Image.fromarray(out, "RGB"), k
+
+
+def _frame_img(project: Path, cfg: dict, frame: int, strict_rgb: bool):
+    """成帧总入口：shutter=0 → 单帧（零额外渲染开销）；>0 → 子帧平均。
+    顺手把本帧子帧数写进 _LAST_K —— 多进程 worker 通过返回值把它带回主进程聚合。"""
+    global _LAST_K
+    shutter = float(cfg.get("_shutter", 0) or 0)
+    if shutter <= 0:
+        img = _render_at_img(project, cfg, frame, None, strict_rgb)
+        _LAST_K = 0
+        return img
+    img, k = _average_u8(project, cfg, frame, strict_rgb)
+    _LAST_K = k
+    return img
+
+
 # ---------------------------------------------------------------- frame render
 
 def _out_path(project: Path, spec: str) -> Path:
@@ -253,28 +413,14 @@ def render_frame(project: Path, frame: int, force: bool = False, cfg: dict | Non
     cfg 显式下传：--w/--h/--fps/--duration 是**进程内**对 load_project 缓存的就地覆盖，
     子进程 worker 拿不到 —— 不传就会退回 project.json 的原尺寸（实测 1920×1080 覆盖
     在 worker 里渲成 640×360，管道与 -s 错位，成片只剩 20 帧）。"""
+    global _LAST_K
     out = frame_path(project, frame)
     if out.exists() and not force:
+        _LAST_K = 0                # 缓存帧没有子帧渲染，聚合时按 0 计
         return "cache"
     cfg = cfg if cfg is not None else load_project(project)
-    mod = load_render_module(project)
-    env = build_env(cfg, frame)
-    try:
-        img = mod.render_at(env["t"], env)
-    except Exception as e:
-        die("render_at(%g) raised: %r" % (env["t"], e))
-    if not isinstance(img, Image.Image):
-        die("render_at(%g) returned %r, expected a PIL.Image" % (env["t"], type(img)))
-    if img.size != (cfg["width"], cfg["height"]):
-        die("render_at(%g) returned %dx%d, expected %dx%d"
-            % (env["t"], img.size[0], img.size[1], cfg["width"], cfg["height"]))
-    if img.mode != "RGB":
-        die("render_at(%g) returned mode %s, expected RGB (call .convert('RGB'))"
-            % (env["t"], img.mode))
-    fx = cfg.get("fx") or {}
-    if fx:
-        arr = apply_fx(np.asarray(img).astype(np.float32), fx, frame)
-        img = Image.fromarray(arr.astype(np.uint8), "RGB")
+    # 单帧或子帧平均（shutter 由 cfg["_shutter"] 决定）；落盘仍是一帧
+    img = _frame_img(project, cfg, frame, strict_rgb=True)
     out.parent.mkdir(parents=True, exist_ok=True)
     tmp = out.with_name(out.name + ".tmp")
     # 帧容器按分辨率选：PNG 恒无损（compress_level 不影响画质，只影响写盘速度）；
@@ -607,21 +753,8 @@ def render_frame_bytes(project: Path, frame: int, depth: int = 8, stats: bool = 
     cfg 显式下传：原因同 render_frame 的 docstring（worker 进程读不到 CLI 覆盖）。
     """
     cfg = cfg if cfg is not None else load_project(project)
-    mod = load_render_module(project)
-    env = build_env(cfg, frame)
-    try:
-        img = mod.render_at(env["t"], env)
-    except Exception as e:
-        die("render_at(%g) raised: %r" % (env["t"], e))
-    if not isinstance(img, Image.Image):
-        die("render_at(%g) returned %r, expected a PIL.Image" % (env["t"], type(img)))
-    if img.size != (cfg["width"], cfg["height"]):
-        die("render_at(%g) returned %dx%d, expected %dx%d"
-            % (env["t"], img.size[0], img.size[1], cfg["width"], cfg["height"]))
-    fx = cfg.get("fx") or {}
-    if fx:
-        arr = apply_fx(np.asarray(img.convert("RGB")).astype(np.float32), fx, frame)
-        img = Image.fromarray(arr.astype(np.uint8), "RGB")
+    # 单帧或子帧平均（与缓存路径同一个入口）；子帧统计只进 _MF
+    img = _frame_img(project, cfg, frame, strict_rgb=False)
     arr = np.asarray(img.convert("RGB"))
     st = _stats_of(arr.astype(np.uint16)) if stats else None
     if depth >= 10:
@@ -635,7 +768,8 @@ def render_frame_bytes(project: Path, frame: int, depth: int = 8, stats: bool = 
 
 def _bytes_worker(project_str: str, frame: int, depth: int, stats: bool = False,
                   cfg: dict | None = None):
-    return render_frame_bytes(Path(project_str), frame, depth, stats, cfg)
+    # 同 _worker：子帧数随结果回主进程聚合
+    return render_frame_bytes(Path(project_str), frame, depth, stats, cfg), _LAST_K
 
 
 def render_video_stream(project: Path, out: Path, audio: str | None, workers: int,
@@ -729,6 +863,7 @@ def render_video_stream(project: Path, out: Path, audio: str | None, workers: in
         if eff == 1:
             for i in range(n):
                 data = render_frame_bytes(project, i, depth, vivid, cfg)
+                _mf_add(_LAST_K)
                 if vivid:
                     data, st = data
                     note(i, st)
@@ -751,7 +886,9 @@ def render_video_stream(project: Path, out: Path, audio: str | None, workers: in
                     while nxt < n and len(pending) < window:
                         pending.append(pool.submit(_bytes_worker, pstr, nxt, depth, vivid, cfg))
                         nxt += 1
-                    data = pending.popleft().result()
+                    payload, k = pending.popleft().result()
+                    _mf_add(k)
+                    data = payload
                     if vivid:
                         data, st = data
                         note(done, st)
@@ -830,7 +967,8 @@ def render_video(project: Path, out: Path, audio: str | None,
             futures = [pool.submit(_worker, pstr, fi, force, cfg) for fi in range(n)]
             done = 0
             for fut in futures:
-                status = fut.result()
+                status, k = fut.result()
+                _mf_add(k)
                 done += 1
                 if status == "rendered":
                     rendered += 1
@@ -840,6 +978,7 @@ def render_video(project: Path, out: Path, audio: str | None,
     else:
         for fi in range(n):
             status = render_frame(project, fi, force, cfg)
+            _mf_add(_LAST_K)
             if status == "rendered":
                 rendered += 1
             else:
@@ -852,8 +991,9 @@ def render_video(project: Path, out: Path, audio: str | None,
     encode_video(project, cfg, out, audio)
 
 
-def _worker(project_str: str, frame: int, force: bool, cfg: dict | None = None) -> str:
-    return render_frame(Path(project_str), frame, force, cfg)
+def _worker(project_str: str, frame: int, force: bool, cfg: dict | None = None):
+    # 返回 (状态, 本帧子帧数)：worker 进程里的 _MF 主进程看不见，k 必须随结果回来
+    return render_frame(Path(project_str), frame, force, cfg), _LAST_K
 
 
 # ---------------------------------------------------------------- scaffold
@@ -1170,6 +1310,17 @@ def main() -> None:
     ap.add_argument("--no-stream", dest="no_stream", action="store_true",
                     help="关掉默认的流式化，强制走帧缓存路径（可断点续渲 + 增量复用；"
                          "10/12-bit 与 HDR 输出除外——那条路只有流式 libx265)")
+    ap.add_argument("--shutter", type=float, default=0.2,
+                    help="运动模糊：每输出帧对快门窗口 shutter×帧时 内的子帧取平均"
+                         "（temporal supersampling）。默认 0.2 = 质感起点不是上限（要更顺滑就"
+                         "加大）；0 = 关。子帧时刻只由 t 决定，确定性不受影响")
+    ap.add_argument("--samples", default="auto",
+                    help="每输出帧子帧数：auto（**只看画面**的自适应收敛：第4个子帧起，新子帧与"
+                         "已有均值的通道差 < tol 即停，下限4 上限324，无时间/次数预算）| 整数 N"
+                         "（固定，均匀铺满快门窗口）；仅 --shutter>0 时生效")
+    ap.add_argument("--tol", type=int, default=3,
+                    help="auto 收敛判据：新子帧与**已有均值**的最大通道差 < tol（按 0..255 计，"
+                         "即 tol/255）就停（默认 3）")
     ap.add_argument("--depth", type=int, default=8, help="输出位深 8|10|12（10/12 自动走流式）")
     ap.add_argument("--hdr10", action="store_true", help="10/12-bit 时按 HDR10 打标（BT.2020 + PQ）")
     ap.add_argument("--hdr-vivid", action="store_true",
@@ -1208,11 +1359,22 @@ def main() -> None:
             log("supersample %s -> %d (requested)" % (ss_now, want))
         ss_now = want
         cfg["supersample"] = ss_now
+    # ---- 子帧平均运动模糊：参数挂进 cfg（与 --w/--h 覆盖同一机制，worker 通过
+    #      显式下传的 cfg 拿到；env["project"] 也带 `_` 前缀键，场景可自检）----
+    shutter = max(0.0, float(args.shutter or 0.0))
+    samples = ("auto" if str(args.samples).strip().lower() == "auto"
+               else max(1, int(args.samples)))
+    tol = max(0, int(args.tol))
+    cfg["_shutter"], cfg["_samples"], cfg["_tol"] = shutter, samples, tol
     # 渲染档位指纹：尺寸/帧率/时长/超采样/帧容器一旦变，帧缓存就不能复用
     # （这些是 CLI 覆盖，不在 project.json 的签名里，必须自己记一笔）。
     stamp = "w%d-h%d-f%d-d%g-ss%d-%s" % (
         cfg["width"], cfg["height"], cfg["fps"], cfg["duration"], ss_now,
         str(cfg.get("frameFormat", "png")))
+    if shutter > 0:
+        # 运动模糊改变像素 → 必须进档位指纹（快门/采样/容差任一变都整轮重渲）。
+        # shutter=0 沿用旧 stamp —— 显式关模糊时存量缓存不失效，A/B 基准也不会互相污染。
+        stamp += "-sh%g-sa%s-tol%d" % (shutter, str(samples), tol)
     marker = project / "frames" / ".renderpass"
     try:
         prev = marker.read_text().strip() if marker.exists() else None
@@ -1279,11 +1441,18 @@ def main() -> None:
             "no resumable frame cache for this render pass -> one-shot delivery"
             if stream_on else
             "resumable frame cache found (this render pass) -> incremental + resumable"))
+    _reset_blur_stats()
+    t_disp = time.time()
     if stream_on:
         render_video_stream(project, out, args.audio, max(1, args.workers), depth,
                             args.hdr10, vivid=args.hdr_vivid)
-        return
-    render_video(project, out, args.audio, max(1, args.workers), force)
+    else:
+        render_video(project, out, args.audio, max(1, args.workers), force)
+    if shutter > 0:
+        # 成本只作记录（排期用），不参与任何采样决策
+        _log_blur(shutter, samples, tol, n_frames(cfg), time.time() - t_disp)
+    else:
+        log("shutter: 0 (motion blur off — default is 0.2, enable with --shutter=0.2)")
 
 
 if __name__ == "__main__":

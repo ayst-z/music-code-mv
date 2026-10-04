@@ -25,7 +25,7 @@ window.MV.shotAt = (t) => 'verse-1'; // optional: label frames in contact sheets
 
 A scene's `draw` receives **its own local time** (0 at the shot's `start`), so a shot can be moved without rewriting it. Anything that spans shots — lyrics, beat grid, a recurring motif — `env.t` is the safe choice: the global timeline time the timeline sets before each scene draws.
 
-Getting this wrong is silent: the scene renders, draws its background, and simply never finds a lyric line, so the shot looks like an empty background. If a text shot renders nothing, check this first.
+Getting this wrong is silent: the scene renders, draws its background, and simply fails to find a lyric line, so the shot looks like an empty background. If a text shot renders nothing, check this first.
 
 ## 确定性 (Determinism)
 
@@ -37,7 +37,7 @@ Getting this wrong is silent: the scene renders, draws its background, and simpl
 正是确定性让帧缓存成立，也让你能把一支 3 分钟的视频分成几次跑完。
 
 - Time comes only from the `t` argument.
-- Randomness comes only from a seeded PRNG (`mulberry32` in the template), re-seeded per shot so adding a later shot never changes an earlier one.
+- Randomness comes only from a seeded PRNG (`mulberry32` in the template), re-seeded per shot so adding a later shot leaves earlier ones untouched.
 - Precompute expensive geometry once at load, not per frame.
 - No `await` inside `renderAt`. Load fonts/assets before setting `__ready`.
 
@@ -57,7 +57,7 @@ Flags that matter:
 
 ```
 --no-sandbox --disable-setuid-sandbox
---enable-unsafe-swiftshader         # required on Chrome 128+ for software WebGL
+--enable-unsafe-swiftshader         # needed on Chrome 128+ for software WebGL
 --use-gl=angle --use-angle=swiftshader
 --hide-scrollbars --mute-audio
 --disable-background-timer-throttling --disable-renderer-backgrounding
@@ -124,13 +124,13 @@ ffmpeg -y -framerate <fps> -start_number <first-frame> -i frames/f%05d.jpg \
 - 降级是**如实**的：日志会打 `[hardware verified — test frame encoded]`，或退回软件并列出哪些硬件编码器不可用及原因，绝不谎报「已用硬件加速」。
 - `render-np.py` 是纯 CPU（NumPy 向量化），不走 GPU；要 GPU 就换 Chrome 引擎的 Three.js/WebGL 镜头。
 
-Three separate things touch hardware, and `probe.mjs` reports each one separately — "WebGL works" is not "the GPU is in use". Render-side flags come from `--gl=gpu` (hardware ANGLE/D3D11 plus GPU rasterization and zero-copy), with `--gl=soft` to force SwiftShader. Encode-side, `--encoder=auto` walks `qsv > nvenc > amf > x264` and **test-encodes one frame with each candidate before trusting it**, because a static ffmpeg build happily lists `nvenc`/`amf` on a machine that has neither card. Falls back to software x264 with the reasons logged — acceleration is never claimed when it did not happen. The NumPy engine is CPU-only by design.
+Three separate things touch hardware, and `probe.mjs` reports each one separately — "WebGL works" is not "the GPU is in use". Render-side flags come from `--gl=gpu` (hardware ANGLE/D3D11 plus GPU rasterization and zero-copy), with `--gl=soft` to force SwiftShader. Encode-side, `--encoder=auto` walks `qsv > nvenc > amf > x264` and **test-encodes one frame with each candidate before trusting it**, because a static ffmpeg build happily lists `nvenc`/`amf` on a machine that has neither card. Falls back to software x264 with the reasons logged — acceleration is only claimed when it happened. The NumPy engine is CPU-only by design.
 
 ## 字体 (Fonts)
 
 只用系统字体族（`ui-monospace, "Cascadia Mono", Consolas, monospace`）。走网络的 webfont `@font-face` 既破坏确定性又拖慢速度；实在要用，就把字体作为本地文件内嵌，并在 `__ready` 之前 `await document.fonts.ready`。
 
-Use system families only (`ui-monospace, "Cascadia Mono", Consolas, monospace`). Webfont `@font-face` over the network is a determinism and speed hazard; if you must, embed the font as a local file and `await document.fonts.ready` before `__ready`.
+Use system families only (`ui-monospace, "Cascadia Mono", Consolas, monospace`). Webfont `@font-face` over the network is a determinism and speed hazard; if you want a custom face, embed the font as a local file and `await document.fonts.ready` before `__ready`.
 
 ## 逐场景 FX (Per-scene FX)
 
@@ -165,7 +165,7 @@ Ordered by leverage:
 
 1. Resolution — cost is linear in pixels. Draft at 480×270.
 2. Renderer — a full-screen `ctx.filter = 'blur(...)'` or a WebGL post chain is the usual bottleneck; replace with a cheap cached glow.
-3. Per-pixel loops — never `getImageData`/`putImageData` per frame; precompute to an offscreen canvas once.
+3. Per-pixel loops — avoid `getImageData`/`putImageData` per frame; precompute to an offscreen canvas once.
 4. Draw calls — batch particle `fillRect` calls; avoid `arc` and per-particle `save/restore`.
 5. Bloom — keep UnrealBloomPass strength near 1.0; software renderers blow out fast.
 
@@ -173,4 +173,4 @@ Ordered by leverage:
 
 帧写成 `frames/f00000.jpg`（**五位序号**；`--format=png` 时是 `f00000.png`）。复用的条件不是「文件在」，而是**文件在且渲染签名没变**——签名 = 宽 / 高 / fps / 时长 / 引擎 / 画质 + 每个镜头声明的 `deps`（`src/scenes/` 的改动经 `deps` 收窄影响面）。所以：只改 `--out` / `--audio` / `--workers` 照旧复用；改分辨率则整轮重渲（实测 `0 rendered, 60 reused` vs `60 rendered, 0 reused`）。`--force` 忽略签名全部重来，`--clean` 在编码后清空 `frames/`。联系表与静帧写进 `.cache/`，不参与帧缓存。
 
-Frames are written as `frames/f00000.jpg` (**five-digit** index; `f00000.png` with `--format=png`). A frame is reused only when the file exists **and** its render signature still matches — signature = width / height / fps / duration / engine / quality plus each scene's `deps`. Changing only `--out`/`--audio`/`--workers` keeps the cache; changing the resolution re-renders everything. `--force` ignores signatures, `--clean` purges `frames/` after encoding. Contact sheets and stills go to `.cache/` and never touch the frame cache.
+Frames are written as `frames/f00000.jpg` (**five-digit** index; `f00000.png` with `--format=png`). A frame is reused only when the file exists **and** its render signature still matches — signature = width / height / fps / duration / engine / quality plus each scene's `deps`. Changing only `--out`/`--audio`/`--workers` keeps the cache; changing the resolution re-renders everything. `--force` ignores signatures, `--clean` purges `frames/` after encoding. Contact sheets and stills go to `.cache/`, outside the frame cache.

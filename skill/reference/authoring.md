@@ -6,7 +6,7 @@ This guide is the full path from an empty folder to a delivered MP4, written as 
 
 规矩不变：先问清楚 → 先分镜 → 每一帧是 `t` 的纯函数 → 每改一镜就看联系表 → 没看过的帧不交付。本页只讲**怎么把链路跑通、卡在哪怎么修**。
 
-The rules do not change: interview first, storyboard before code, every frame a pure function of `t`, read a contact sheet after every change, never ship an unseen frame. This page is about **making the pipeline run and unblocking it when it jams**.
+The defaults stay the same: interview first, storyboard before code, every frame a pure function of `t`, read a contact sheet after every change; an unseen frame is treated as unshipped. This page is about **making the pipeline run and unblocking it when it jams**.
 
 ---
 
@@ -128,7 +128,7 @@ node skills/music-code-mv/scripts/render.mjs --project=my-mv --contact --w=480 -
 
 最后一行就是 PNG 路径，**直接把它喂给读图工具**。可调项：`--keys=`（关键帧数，默认 12）、`--cols=`（列数，默认 4）、`--keyw=`（每格宽，默认 320）、`--out=`（改输出路径）。联系表写进 `.cache/contact/`，**不占帧缓存**，也**不吃 `--workers`**（实跑 `--workers=4` 也没有并排行）。
 
-The last line is the PNG path — feed it straight to your image reader. Keys/cols/keyw/out are adjustable. Contact frames land in `.cache/contact/`, never touch the frame cache, and **ignore `--workers`**.
+The last line is the PNG path — feed it straight to your image reader. Keys/cols/keyw/out are adjustable. Contact frames land in `.cache/contact/`, outside the frame cache, and they ignore `--workers`.
 
 ### 2.4 静帧 (Stills)
 
@@ -194,7 +194,7 @@ Frames are reused only when the file exists **and** the render signature is unch
 
 所以：**草稿分辨率调构图，最后换交付分辨率时一定会整轮重渲**——这是预期行为，不是缓存坏了。加 `--force` 是「同一份工程也全部重来」。
 
-Draft at draft resolution; switching to delivery resolution always re-renders everything by design.
+Draft at draft resolution; switching to delivery resolution re-renders everything by design.
 
 ### 2.7 核对成片 (Verify the file)
 
@@ -332,7 +332,7 @@ node_modules\ffmpeg-static\ffmpeg.exe -y -loglevel error -i narration\out\n01.wa
 
 实测注意：`apad=whole_dur=8` **只补不裁**——如果某段被摆到 4.0 s 而它本身 4.96 s，`track.wav` 会是 8.96 s。最终成片由渲染器的 `-shortest` 收口（实测：8.96 s 音轨 × 8 s 画面 → 成片 `Duration: 00:00:08.00`，音轨被裁齐）。**要精确对齐就在滤镜末尾加 `atrim=0:<总长>` 或 `-t <总长>`。**
 
-`apad` pads but never trims — an overrunning clip leaves the track longer than the film; `-shortest` then clamps the MP4 (verified: 8.96 s audio × 8 s video → 00:00:08.00). Add `atrim` or `-t` when you need an exact length.
+`apad` pads without trimming — an overrunning clip leaves the track longer than the film; `-shortest` then clamps the MP4 (verified: 8.96 s audio × 8 s video → 00:00:08.00). Add `atrim` or `-t` when you need an exact length.
 
 ### 5.3 交给渲染器 (Hand it over)
 
@@ -384,7 +384,7 @@ Six things to check, in order: empty shots, type legibility, motion arc across t
 | `Error opening input file track.wav`（NumPy 引擎） | `--audio=` 按 CWD 解析 | 给从当前目录算起的完整相对路径 |
 | 成片比预期短 | `-shortest` 按最短流收口，音轨/画面谁短裁谁 | 音轨先 `apad`/`atrim` 到全片长度（见 5.2） |
 | 想量时长，`ffprobe` 报 CommandNotFound | 工作区没装 ffprobe | `node_modules/ffmpeg-static/ffmpeg.exe -i <file>` |
-| `frame t=… stuck for 120s — window.renderAt() never returned` | 场景里有死循环或异步等待 | 查该镜头的 `draw`：`await` 或无界循环会让它永远回不来 |
+| `frame t=… stuck for 120s`（`renderAt()` 未返回） | 场景里有死循环或异步等待 | 查该镜头的 `draw`：`await` 或无界循环会让它永远回不来 |
 | `[page error] …` / `scene "x" failed at t=…` | 场景抛异常，帧照渲但内容错 | 看 stderr 里点名的场景 id 与 t |
 | `signature changed: cleared N cached frames`（NumPy） | 正常：`project.json`/`src/render.py` 变了 | 不是错误，缓存在自我失效 |
 | `frames: N rendered, 0 reused` 但你什么都没改 | 改了宽高/fps/时长/引擎/画质 | 预期行为（见 2.6）；草稿期固定用 480×270 |

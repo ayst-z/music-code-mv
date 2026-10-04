@@ -42,7 +42,7 @@ Each entry: the look, the code primitive, and when to reach for it.
 
 **Look:** phosphor lines, vignette, barrel-ish curvature, faint bloom.
 **Primitives:** a cached 1×4 pattern filled over the frame (`createPattern`), `createRadialGradient` vignette, low-alpha `ctx.filter = 'blur(2px)'` copy for glow.
-**Cheap and always good.** Layer it over any other style.
+**Cheap and reliably good.** Layer it over any other style.
 
 ## T5 — 线框 / 网格 3D (Wireframe / grid 3D)
 
@@ -92,9 +92,9 @@ Each entry: the look, the code primitive, and when to reach for it.
 **规则：** 拖尾是画出来的，不是累积出来的。场景代码每帧拿到的都是一张全新的 canvas 状态——指望上一帧还活着会拿到空画面（所以场景内部通常不做全帧淡出缓冲）。
 
 **Look:** a seeded swarm circling one bright core, every point dragging a short low-alpha tail; orbits projected as shallow ellipses so the field reads as volume without WebGL.
-**Primitives:** radius / speed / orbit tilt / phase all from `hash1(i * stride)` (never `Math.random`), angle `phase + speed * t` per particle, `fillRect` for every sample, trail = TRAIL ghosts sampled at `t - g * STEP` with `alpha ∝ (1 - g/TRAIL)^1.7`, `shadowColor/shadowBlur` for the core, one expanding `ellipse` ring per beat.
+**Primitives:** radius / speed / orbit tilt / phase all from `hash1(i * stride)` (no `Math.random`), angle `phase + speed * t` per particle, `fillRect` for every sample, trail = TRAIL ghosts sampled at `t - g * STEP` with `alpha ∝ (1 - g/TRAIL)^1.7`, `shadowColor/shadowBlur` for the core, one expanding `ellipse` ring per beat.
 **Use for:** intros, choruses, "a system thinking" — motion that sits under type at low alpha and still fills the frame on its own.
-**Rule:** the trail is drawn, not accumulated. Scene code gets a fresh canvas state every frame, so never rely on the previous frame surviving (no full-frame fade buffer inside a scene).
+**Rule:** the trail is drawn, not accumulated. Scene code gets a fresh canvas state every frame, so relying on the previous frame gives a blank result (no full-frame fade buffer inside a scene).
 
 ## T11 — 等距 3D（纯 2D）(Isometric 3D (pure 2D))
 
@@ -118,19 +118,19 @@ Each entry: the look, the code primitive, and when to reach for it.
 **Look:** oscilloscope trace, bar strip, heat grid, ticking numbers — a shot that explains the video instead of performing it.
 **Primitives:** every number is a pure function of time: layered sines plus `hash2(cell, floor(t*7))` jitter for the trace, `0.5 + 0.5*sin(t*hz + k*i)` envelopes for bars, `sin` + quantised hash for heat cells; stroke runs with `lineTo` + `shadowBlur`, bars with `fillRect` from a baseline, heat cells with `globalAlpha` over `palette.base`, hottest cell alone in `palette.hot`; readouts via `stage.text(env.t.toFixed(2))`.
 **Use for:** telemetry, breakdowns, bridges, exposition beats — anywhere the lyric has stopped and the data has to carry the point.
-**Rule:** derived, never stored. No keyframe arrays, no clocks, no analyser. Use `env.t` when a readout should feel continuous with earlier shots and the shot's local `t` when it belongs to this shot alone.
+**Rule:** derived, not stored. No keyframe arrays, no clocks, no analyser. Use `env.t` when a readout should feel continuous with earlier shots and the shot's local `t` when it belongs to this shot alone.
 
 ## 显示器风格 (Display technologies · T13–T24)
 
 画面不只是"什么图案"，还是**什么屏幕**。这一族可以叠在任何其它风格与母题之上；**一个段落只演一种显示器**——换显示器等于换时代，是分段色彩脚本级别的事件，切换贴着段落边界走更稳，镜头间乱跳会打断分段节奏。
 
-A frame is also *what screen it is on*. This family stacks over any other style and any motif; **one display technology per segment** — switching screens is switching eras, so cut on section boundaries, never mid-verse.
+A frame is also *what screen it is on*. This family stacks over any other style and any motif; **one display technology per segment** — switching screens is switching eras, so cut on section boundaries rather than mid-verse.
 
 ### T13 — CRT 显像管 (Full CRT tube)
 **外观：** 桶形曲率、荫罩三色点或光栅条、扫描线随亮度出现。签名动作是**开关机**：开机=一条水平亮线纵向展开成画面，关机=画面横向塌成一道亮线再缩成一点、余辉熄灭（正是 M17 的收官）；开机瞬间的消磁（degauss）让色纯抖两下，行频失步时画面横向撕裂。
 **原语：** 模板 `stage.js` 现成三个方法——`stage.barrel(0.10~0.22)`（**广角畸变/桶形曲率**：按行绕中心水平缩放，中心放最多、竖线弯成桶形）、`stage.beamBlur(1~2.5@720p)`（**粒子模糊/束斑**：电子束打在荧光粉上是软光斑，亮度越高扩散越大，和 bloom 成对——bloom 管溢出、这个管焦外）、`stage.mask('triad'|'grille')`（**荫罩三色点/光栅条 + 一根 Trinitron 阻尼线**，multiply 只压暗缝隙）。扫描线用 `stage.scanlines()`（**乘性**压暗非亮区，不画黑条）；开关机=`clamp(t)` 驱动 y-scale 0↔1 加亮度包络；余辉=在 `t−g·STEP` 上采样 2–3 个重影（T10 的纪律：不读上一帧）。行频失步用 `sliceGlitch`，消磁抖动用两次快速 `chroma` 脉冲。NumPy 版的曲率用 meshgrid 直接做 UV 重采样。
 **适用：** 开机/关机段（M1/M17）、`phosphor` 预设、一切"这是一台老机器"的叙事。**与 T4 的分工**：T4 是便宜的覆盖层（扫描线+暗角，叠什么都成立），T13 是整根显像管的仿真——要做曲率与开关机动画时用它。
-**Look:** barrel curvature, mask triads, brightness-driven scanlines, degauss wobble; power-on unfolds a horizontal line into a picture, power-off collapses it to a point (M17's signature move). Persistence is ghosted at `t−g·STEP`, never read from the previous frame. T4 is the cheap overlay; T13 is the whole tube.
+**Look:** barrel curvature, mask triads, brightness-driven scanlines, degauss wobble; power-on unfolds a horizontal line into a picture, power-off collapses it to a point (M17's signature move). Persistence is ghosted at `t−g·STEP`, derived from `t` rather than read from the previous frame. T4 is the cheap overlay; T13 is the whole tube.
 
 ### T14 — 矢量荧光屏 (Vector phosphor / oscilloscope)
 **外观：** 没有像素网格——画面全是发光笔画，亮处晕开、暗处纯黑，轨迹按余辉衰减；XY 模式下一切运动天然长成李萨如。
@@ -142,7 +142,7 @@ A frame is also *what screen it is on*. This family stacks over any other style 
 **外观：** 青蓝绿段码浮在暗玻璃后，字前面罩着一层**细金属栅网**的影子，几条极淡的灯丝横线；数字永远是段码拼出来的。
 **原语：** 段码字形表（字形=段列表）+ 段间微光溢出；栅网=低 alpha 细网格 pattern 叠在字上；底是暗玻璃（`bg` 略带青灰），不是纯黑。
 **适用：** 机器仪表、计数器、时间码；比 CRT 干净、比 LCD 复古。
-**Look:** teal segment glyphs behind a fine mesh grid and faint filaments; digits are always assembled from segments. Instrument panels and counters.
+**Look:** teal segment glyphs behind a fine mesh grid and faint filaments; digits are assembled from segments. Instrument panels and counters.
 
 ### T16 — 数码管 / 辉光管 (Seven-segment & Nixie)
 **外观：** 七段数码管：每段是带斜切角的长六边形，**熄灭的段留 5% 暗痕**；辉光管：橙色氖气数字**前后叠放**，近处的字更大更亮，灯丝可见，橙光在暗玻璃里晕开。
@@ -317,7 +317,7 @@ on_segment_boundary: fade_to_black(0.15s) | eink_refresh_flash(); then switch(ki
 
 T1–T27 是**怎么看**（风格），母题是**看什么**（镜头内容）。这支「从开机到关机」的程序把元素排成一条节拍链；顺序按段落走、时间锚到音频，**写死的时间码通常会在改时长时失效**。每个母题就是一个镜头的一件事（规矩 4），节拍建议链：
 
-T1–T27 say *how* a shot looks; a motif says *what* it is about. The "boot → shutdown" program orders the elements into a beat chain: follow the sections, anchor timing to the audio, **never to baked-in timecodes**. One motif = one event per shot (rule 4). Suggested chain:
+T1–T27 say *how* a shot looks; a motif says *what* it is about. The "boot → shutdown" program orders the elements into a beat chain: follow the sections, anchor timing to the audio, **rather than to baked-in timecodes**. One motif = one event per shot (rule 4). Suggested chain:
 
 ```
 开机 → world boot → 几何定义 → 电与时间 → EXECUTION/副歌 → 万物皆点 → 互换 → 振动
@@ -412,7 +412,7 @@ T1–T27 say *how* a shot looks; a motif says *what* it is about. The "boot → 
 
 **Look:** real engine errors and stack traces thrown on screen verbatim (the loudest type in the film), a number pushed through IEEE-754 into `Infinity → NaN`, a context-window counter maxing out and turning red.
 **Primitives:** T1 typewriter with `hot` on file/line; three-state hard cut `toFixed → 1e309 → NaN`; counter nearing `max` recolours to `hot` and shakes (T2), then one T3 hit at the top.
-**Use for:** conflict sections and the ILLEGAL ARGUMENTS card — error text stays complete and readable (rule 5), never background noise.
+**Use for:** conflict sections and the ILLEGAL ARGUMENTS card — error text stays complete and readable (rule 5) rather than background noise.
 
 ### M11 — 崩溃 / Collapse
 **外观：** 晶格在负载下坍塌（结构整体 k 塌），GPU 像素排序把画面按亮度重排成条纹瀑布，训练发散：损失曲线冲出画面变成 `NaN`。
@@ -421,7 +421,7 @@ T1–T27 say *how* a shot looks; a motif says *what* it is about. The "boot → 
 
 **Look:** a lattice collapsing under load, GPU pixel-sorting reordering the frame into a striped waterfall, a loss curve leaving the frame and becoming `NaN`.
 **Primitives:** projected vertices interpolating to the centroid + one T3; row-wise `argsort(luminance)` over the whole frame (one NumPy pass — the archetypal pixel-math shot); adaptive domain blow-up, `base` → `hot`, last frame prints `NaN`.
-**Use for:** the collapse section — always after something has already hit its limit in M10.
+**Use for:** the collapse section — it lands best after something has already hit its limit in M10.
 
 ### M12 — 处决 / 执行队列
 **外观：** fork 炸弹 `:(){:|:&};:` 长成一棵**三维 H 树**，进程数 1→4→…→4096，每翻一倍切镜随之翻倍；执行队列 16 连——16 个格子依次点亮又同时熄灭。
@@ -438,7 +438,7 @@ T1–T27 say *how* a shot looks; a motif says *what* it is about. The "boot → 
 **适用：** 副歌的暗版；同一构图、换一套更冷的分段色（分段色彩脚本见配色逻辑）。
 
 **Look:** dead ReLU units `a = max(0, z)` — cells whose z went negative go dark and stay dark; gravity collapse `h = h_c − ½gT²` — a whole row of heights falling on one parabola.
-**Primitives:** once a cell is dead it never re-lights (death time derived from `t`); vectorised `h(t)`, each column flashing `dim` on impact — both full-frame NumPy passes.
+**Primitives:** once a cell is dead it stays dead (death time derived from `t`); vectorised `h(t)`, each column flashing `dim` on impact — both full-frame NumPy passes.
 **Use for:** the dark reprise of a chorus — same composition, colder segment palette (see colour logic).
 
 ### M14 — LOVE / 爱的代数
@@ -465,8 +465,8 @@ T1–T27 say *how* a shot looks; a motif says *what* it is about. The "boot → 
 **适用：** M15 → M17 之间的转场；擦除之后建议接一个**更空**的镜头（密度对比才立得住）。
 
 **Look:** the frame erased row by row to bare `bg`; leftovers flicker two or three frames and leave.
-**Primitives:** row/cell threshold mask reused from M9; leftovers live in T3's 2–6 frame window, never longer.
-**Use for:** the transition out of M15 — what follows must be emptier still.
+**Primitives:** row/cell threshold mask reused from M9; leftovers live in T3's 2–6 frame window, no longer.
+**Use for:** the transition out of M15 — the shot after it usually wants to be emptier still.
 
 ### M17 — 关机 / exit code
 **外观：** 开机序列**倒放**（M1 的每个元素反向走一遍），粒子数 `N: 262144 → 1` 逐档坍缩成一个点，屏幕只剩光标，最后吐出 `exit code`。
@@ -533,13 +533,13 @@ Formula: one accent + a gradient derived from it + a tinted near-black + an off-
 
 **引擎差异：** NumPy 引擎**自动**按 `segments` 换段色（`chapter_at()` 读 `env.segments`）；Chrome 模板**不会自动读它**——模板的 `env` 里没有 `segments` 字段，镜头要自己取 `env.project.segments`，否则 `segments` 只是个没人消费的字段。
 
-Cut the film into color chapters: roles hold inside a segment, segments change by hard cut (or a 0.3–0.5 s crossfade), and roles are conserved across the cut. Segment boundaries sit on section markers, never on arbitrary seconds; fog/bloom/vignette follow the current segment's palette. Field formulas and a full worked example live in `reference/numpy-pillow.md`. **Per engine:** the NumPy engine switches palette from `segments` automatically (`chapter_at()`), while the Chrome template does **not** — its `env` carries no `segments` field, so a scene must read `env.project.segments` itself.
+Cut the film into color chapters: roles hold inside a segment, segments change by hard cut (or a 0.3–0.5 s crossfade), and roles are conserved across the cut. Segment boundaries sit on section markers rather than arbitrary seconds; fog/bloom/vignette follow the current segment's palette. Field formulas and a full worked example live in `reference/numpy-pillow.md`. **Per engine:** the NumPy engine switches palette from `segments` automatically (`chapter_at()`), while the Chrome template does **not** — its `env` carries no `segments` field, so a scene reads `env.project.segments` itself.
 
 ### 浅色预设纪律 (Light-preset discipline)
 
 `ink-paper` 与 `claude` 这类浅色预设里：`bg` 是纸、`text` 是墨，`dim` **绝不用来写正文**；`hot` 在浅底上要降低明度（朱砂而不是荧光红），否则刺眼。浅色的"响"来自留白，不来自饱和度。
 
-On light presets (`ink-paper`, `claude`): `bg` is paper and `text` is ink; `dim` never carries body copy; drop `hot`'s lightness on light ground (vermilion, not neon red). Light frames get loud from whitespace, not saturation.
+On light presets (`ink-paper`, `claude`): `bg` is paper and `text` is ink; `dim` carries no body copy; drop `hot`'s lightness on light ground (vermilion, not neon red). Light frames get loud from whitespace, not saturation.
 
 
 ## 组合搭配 (Combining)
@@ -550,7 +550,7 @@ A strong default stack for this genre: **T1 + T4** for verses, **T2** for chorus
 
 **显示器的组合法**：显示器风格是**独立一层**——一个段落只用一种，垫在母题与排版**下面**，而不是和另一种显示器互叠（T1 终端排版可以叠在 T13 显像管上，M11 崩溃母题可以叠在 T27 数据砸裂上；但 CRT 上再糊 VHS 就是两台机器同时坏掉）。年代按段落排：开机/关机 → T13，九十年代回忆 → T23，大厅倒数 → T24，现代设备 → T18/T19，纸面章节 → T20/T25。段落之间换显示器，先过一道黑场或闪黑——T20 的刷新闪是最自然的换管信号。
 
-**Display combos:** a display style is its own layer — one per segment, under motifs and typography, never stacked over another display (T1 terminal on a T13 tube, M11 collapse on T27 datamosh; CRT *plus* VHS is two machines breaking at once). Order eras by section: boot/shutdown → T13, 90s memories → T23, lobby countdown → T24, modern devices → T18/T19, paper chapters → T20/T25. To swap displays across a transition, cut through black first — T20's refresh flash is the most natural changeover signal.
+**Display combos:** a display style is its own layer — one per segment, under motifs and typography, not stacked over another display (T1 terminal on a T13 tube, M11 collapse on T27 datamosh; CRT *plus* VHS is two machines breaking at once). Order eras by section: boot/shutdown → T13, 90s memories → T23, lobby countdown → T24, modern devices → T18/T19, paper chapters → T20/T25. To swap displays across a transition, cut through black first — T20's refresh flash is the most natural changeover signal.
 
 ## 叠层纪律 (Layering discipline) —— 不臃肿，不单调
 
@@ -611,7 +611,7 @@ fn audit_timeline(t0, t1):                      # 不单调（看一段）
 
 规矩 4（一镜一件事）就是「不单调」的**时间轴判据**；规矩 5（文字可读）就是「不臃肿」的**排版判据**；「组合搭配」告诉你**怎么换层**，本节告诉你**叠几层、什么时候删层**。三者合起来才是一套完整的构图纪律。
 
-Layering order is fixed — depth, display, subject, motif, type, then finishing FX. Judge bloat on a single frame (one focal point, at most five visible layers, every layer able to state its reason, type always winning contrast) and judge monotony across time (at least one of density/brightness/motion/depth must move within a 3 s window; every shot carries one countable event; the focal *kind* rotates). Rules 4 and 5 are exactly the timeline and typographic forms of these two tests, and 组合搭配 supplies the swap table.
+Layering order is fixed — depth, display, subject, motif, type, then finishing FX. Judge bloat on a single frame (one focal point, at most five visible layers, every layer able to state its reason, type winning contrast) and judge monotony across time (at least one of density/brightness/motion/depth moves within a 3 s window; every shot carries one countable event; the focal *kind* rotates). Rules 4 and 5 are exactly the timeline and typographic forms of these two tests, and 组合搭配 supplies the swap table.
 
 ## 节奏与连续动画 (Rhythm and continuous motion)
 
@@ -649,7 +649,7 @@ fn audit_rhythm(shots, bpm):
 | 信息停太久 | 一个画面讲两件事 | 拆镜，或让第二信息点以**运动**入场（别用淡入淡出混过去） |
 | 配乐在动画面不动 | 音画不同步 | 子镜切点对齐拍点，画面重音与鼓点同时发生 |
 
-Rhythm is measurable: cut on the beat (boundaries snapped to `60/BPM`, transitions landing on the score's impacts), never hold a frame static for more than half a second — consecutive-frame mean|Δ| must stay above 0.5, which pairs with the monotony test (3-second windows) by watching every adjacent pair — and keep entrances at 0.25–0.5 s with exits faster. Long easings are the number-one cause of a sluggish feel.
+Rhythm is measurable: cut on the beat (boundaries snapped to `60/BPM`, transitions landing on the score's impacts), no frame held static for more than half a second — consecutive-frame mean|Δ| sits above 0.5, which pairs with the monotony test (3-second windows) by watching every adjacent pair — and entrances at 0.25–0.5 s with faster exits. Long easings are the number-one cause of a sluggish feel.
 
 ## 成片技法 (Production techniques)
 
@@ -668,9 +668,25 @@ Rhythm is measurable: cut on the beat (boundaries snapped to `60/BPM`, transitio
 
 `bloom` + **halation**（亮部向暗部渗光、暖色晕开）+ `stage.grain`（连续 t 驱动，任意 fps 每帧都不同）。字体成套分工：标题、正文、等宽各司其职，别让一种字体包打天下。
 
-### 宽银幕遮幅 (Letterbox)
+### 极暗电影叙事 (Cinematic dark narrative)
 
-**2.39:1 上下信箱边**是电影感最快的开关——对 16:9 源画上下遮幅即得。配它的是**慢与空**：长镜头、留白、单点叙事；与「节奏紧凑」并不冲突——**紧的是内部运动**（雾、光、粒子持续漂移），**松的是剪辑频率**，情绪靠「一次只给一条线索」而不是给满。
+**画幅直出，不加黑边**：把渲染尺寸设成 2.39:1 本身（1920×804 / 2560×1070 / 3840×1608）——比事后遮幅更锐，构图从第一稿就按宽银幕排。**慢与空**跟「节奏紧凑」并不冲突：**紧的是内部运动**（雾、光、粒子持续漂移），**松的是剪辑频率**——这一路的换景约 15–20s 一次、硬切稀少，转场用 1.5–3s 交叉溶解或形态渐变；情绪靠「一次只给一条线索」而不是给满。
+
+**极暗基线（可测）**：整片平均亮度压到 **22/255 量级**；判据——**约七成帧有一半以上像素 <16**、约三成帧九成像素近黑，最暗可到 mean≈1。背景 `#000`–`#0a0a0c`，`fx.vignette` 常开、曝光 ≤0.8；渲完用同口径的 `dark16` 统计自检。
+
+**单一暖光垄断色彩**：全片只留**一个**暖色光源（琥珀 `#ffb347` / `#ff7a1a`），平时暖像素占比个位数，**把全部暖意集中到一段 20–30s 的高潮**（那段时间可到 0.42–0.53），其余段落停在冷蓝灰。emissive + bloom ≈1 即可，别过曝。
+
+**黑屏字卡当节拍**：近黑段承载叙事节点——开场 0–7s、中段 25–30s 整段留白、收尾 20–25s 的字卡问答。白字 + 极弱 glow、对比 ≥4.5:1；中英双行一组（中文 28–40px、英文 16–20px、alpha 0.7、行距 1.4）。
+
+**文字即材质**：把文本烘成纹理贴到水面/球体/楼体（`CanvasTexture` + 顶点噪声位移做波浪），或在 np 引擎走透视投影文字网格——「语料的海」「文字的城市」是 T1/T7 的三维化，本栈现成。
+
+**贯穿全片的母题**：一个**不销毁的小元素**（2px×30–40px 的琥珀光标、方波 530ms×2 闪烁），每镜只改位置与尺寸——它就是这一片的「太阳」。母题的价值在**连续性**：观众靠它把散落的镜头缝成一部片。
+
+**无限地平线构图**：透视相机 fov 35–50、地平线锁在画幅 0.55–0.65 高、重复元素沿 z 轴指数排布——单点消失 + 无尽重复自带「世界很大、主体很小」。
+
+**开场色分离**：同一字形画 3 次（`globalCompositeOperation:'lighter'`），R/G/B 各偏 2–6px——字符栅格被三通道拆开的开场感。Credit 用等宽 10–12px、alpha 0.5、距边约 4%；结尾引文卡 12–14px 居中停留 ≥4s。
+
+Cinematic dark narrative: render at 2.39:1 natively (1920×804 and friends), hold average brightness around 22/255 with roughly seven in ten frames having over half their pixels below 16, and let a single amber light own all the warmth — concentrated into one 20–30 s climax while the rest stays cold. Keep cuts rare (scene change every 15–20 s, 1.5–3 s dissolves), use near-black title cards as narrative beats with bilingual type (28–40 px Chinese over 16–20 px English at 0.7 alpha), turn text into material (textured water/spheres/buildings), carry one small persistent motif across every shot — the film's sun — and anchor infinite-horizon compositions at 0.55–0.65 frame height with fov 35–50.
 
 ### T28 · 聊天窗叙事 (Chat-window narrative)
 

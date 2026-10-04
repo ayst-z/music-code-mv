@@ -12,7 +12,7 @@ python scripts/render-np.py --init=my-mv --preset=claude   # NumPy 引擎同一�
 
 **注意两条（实测）：** ① 跑 `render-np.py` 的 python 需要自带 numpy + Pillow（PATH 上的裸 `python` 常常没有，会直接报 `render-np.py needs numpy and Pillow`）；② **两个引擎都会套 `palette` / `fx` / `duration` / 分镜 / 占位歌词**（实测 `--init --preset=claude` → `project.json` 里 `"bloom": false`）；差别在于 NumPy 引擎**还会写 `three` 与 `segments`**（`segments` 它自己会消费），而 Chrome 的 `init.mjs` 不写 `segments`——Chrome 模板也不会自动读它，镜头要自己取 `env.project.segments`。浅色底上若把 `fx.bloom` 手动打开，整屏会过曝，见 `reference/authoring.md` 3.1。
 
-**Two measured notes:** the Python running `render-np.py` must ship numpy + Pillow, and **both engines now apply `palette`, `fx`, `duration`, storyboard and lyrics** (verified: `--init --preset=claude` yields `"bloom": false`). The NumPy engine additionally writes `three` and `segments` (and consumes `segments`); Chrome's `init.mjs` writes neither, and the Chrome template does not read `segments` on its own.
+**Two measured notes:** the Python running `render-np.py` needs numpy + Pillow, and **both engines now apply `palette`, `fx`, `duration`, storyboard and lyrics** (verified: `--init --preset=claude` yields `"bloom": false`). The NumPy engine additionally writes `three` and `segments` (and consumes `segments`); Chrome's `init.mjs` writes neither, and the Chrome template does not read `segments` on its own.
 
 ### 氛围预设 (Mood presets)
 
@@ -44,7 +44,7 @@ node scripts/tts.mjs --persona=presets/fairy.json --out=narration/01.wav "这一
 
 **`persona.voice` — the voice is cast too.** The `voice` block carries the model (`mimo-v2.5-tts-voicedesign`), a `voiceDesignPrompt` describing the timbre, and two levels of built-in fallback. One flag applies the whole cast; per-item overrides in a batch manifest let a single film switch characters.
 
-Inside `fairy`'s `persona` sit the **traits** (fast-tongued; every criticism ships with an executable fix; remembers your last choices), the **speech rules** (short sentences with exact coordinates, plus samples), the **appearance constraints** (three-colour silhouette, never a fourth accent, no photoreal faces) and the **behaviour rules** (interview first, default to 3D per the luxury checklist, read every contact sheet, measure narration before scheduling). Its `source` field states plainly that the folklore basis is prior knowledge, not a live search.
+Inside `fairy`'s `persona` sit the **traits** (fast-tongued; every criticism ships with an executable fix; remembers your last choices), the **speech rules** (short sentences with exact coordinates, plus samples), the **appearance constraints** (three-colour silhouette, a fourth accent off the table, no photoreal faces) and the **behaviour rules** (interview first, default to 3D per the luxury checklist, read every contact sheet, measure narration before scheduling). Its `source` field states plainly that the folklore basis is prior knowledge, not a live search.
 
 ### AI 模型配色预设 (AI-model palettes)
 
@@ -95,7 +95,7 @@ Each sheet below is a real render of that preset — regenerate one with `--cont
 
 `style` 与 `persona` 是给「智能体预设」用的：前者告诉镜头该往哪个风格码走，后者决定**是谁在和你一起做这支片**——同一套预设可以被当成配色表，也可以被当成一位同事。`threejs.md` 的豪华清单与 SKILL.md 的规矩 0 都写进了 `fairy.persona.behavior`，性格和流程不会打架。
 
-`style` and `persona` exist for agent presets: the first steers shots toward specific style codes, the second decides **who is making the film with you**. A preset can be used as a colour table or as a colleague — `fairy.persona.behaviour` already encodes the luxury checklist and the interview rule, so personality and process never disagree.
+`style` and `persona` exist for agent presets: the first steers shots toward specific style codes, the second decides **who is making the film with you**. A preset can be used as a colour table or as a colleague — `fairy.persona.behaviour` already encodes the luxury checklist and the interview rule, so personality and process stay aligned.
 
 预设只改这些「外观与骨架」；镜头代码仍然是 `src/scenes/` 里那六个模块，想改哪一镜就改哪一镜。
 A preset only sets appearance and skeleton; the six scene modules under `src/scenes/` remain yours to edit.

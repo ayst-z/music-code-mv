@@ -35,7 +35,7 @@ This file is a reference tool table: where the tools live, how to type the comma
 1. **Storyboard before code (the default).** Write `storyboard.md` (shots, seconds, style, palette, lyric cue), settle it, then write scene code — a blank-canvas start usually ends in rework.
 2. **Make each frame a pure function of virtual time `t` (the default).** The page exposes `window.renderAt(t)`; `requestAnimationFrame`, `Date.now()`, `performance.now()` and draw-time `Math.random()` are the usual things to avoid (use a seeded PRNG). Why: **this is what makes rendering reproducible, resumable and parallel** — frame cache, resume and multi-worker runs all sit on it.
 3. **Look at your own output (the default).** Render a contact sheet after each scene and *read the image*; an unseen frame carries its problems all the way to the master.
-4. **One thing happens per shot (the default).** A shot with no event usually means a bug lives there — either drawn wrong or never reached in time.
+4. **One thing happens per shot (the default).** A shot with no event usually means a bug lives there — either drawn wrong or not reached in time.
 5. **Keep type readable (measured threshold 4.5:1).** If a lyric is on screen it is the loudest element in the frame — that is where the contrast threshold comes from.
 
 ### 后果速查 (What happens if…)
@@ -48,7 +48,7 @@ This file is a reference tool table: where the tools live, how to type the comma
 - **红灯提交**：接手的人第一次跑就炸，然后花时间怀疑自己；`node sync-skill.mjs` 后 `node sync-skill.mjs --check` 加四套测试是最快的自检。
 - **TTS / 代理脚本默认只连 `127.0.0.1`（传别的地址会 `exit 2`）**：因为配音内容不应离开本机；要外发就改代码，这是你的选择。
 
-- **If a frame's size differs from `project.width × project.height`, or its mode is not RGB**: the NumPy engine exits on the spot and the Chrome engine fails the whole run — **zero output**. You will almost always want them to match; to try another size, change `project.json` and the cost is the same.
+- **If a frame's size differs from `project.width × project.height`, or its mode is not RGB**: the NumPy engine exits on the spot and the Chrome engine fails the whole run — **zero output**. You will usually want them to match; to try another size, change `project.json` and the cost is the same.
 - **If you write into someone else's file or commit for them in a shared workspace**: the usual outcome is overwriting each other and turning a green gate red; `reference/teamwork.md §2` records two working arrangements (lead commits for everyone / disjoint scopes) — either works.
 - **If personal absolute paths or keys end up in the artefact**: everyone who downloads it sees them; `node test/privacy.test.mjs` tells you in a minute (38 passed here). For screenshots, the `make-docs-images` / `make-usage-recording` redaction refuses to output un-redacted frames.
 - **If you commit a red gate**: the next person's first run explodes and they spend time doubting themselves; `node sync-skill.mjs` + `--check` plus the four test suites is the fastest self-check.
@@ -122,7 +122,7 @@ Eight steps in one line: **interview** → storyboard → scaffold → build sho
 
 When the frame is fundamentally **math** (fields, SDFs, fractals, sampling), when you need pixel-exact grid typography, or when headless Chrome cannot start (sandbox `spawn EPERM`), switch engines: `render-np.py` scaffolds (`--init`), self-checks (`--contact`) and renders (`--out=out/video.mp4`) with the identical contract, frame cache, contact sheet and preset set. Full recipes for the four core methods — frame-by-frame rendering, 3D perspective projection, strict grid & type scale, segmented color script — live in `reference/numpy-pillow.md`.
 
-**Three measured differences from the Chrome engine:** `--audio=` resolves against the process CWD while `--out=` resolves against the project; there are no `--w/--h/--fps/--dur` overrides (size comes from `project.json`); and the `python` on PATH here has neither numpy nor Pillow, so use the DSH-bundled Python (see `reference/authoring.md`, section 3). Preset `palette`, `fx`, `duration`, storyboard and lyrics are applied by **both** engines (verified: `--init --preset=claude` gives `"bloom": false`); NumPy additionally writes `three` and `segments` (and consumes `segments`), while `init.mjs` writes no `segments` and the template never reads it automatically.
+**Three measured differences from the Chrome engine:** `--audio=` resolves against the process CWD while `--out=` resolves against the project; there are no `--w/--h/--fps/--dur` overrides (size comes from `project.json`); and the `python` on PATH here has neither numpy nor Pillow, so use the DSH-bundled Python (see `reference/authoring.md`, section 3). Preset `palette`, `fx`, `duration`, storyboard and lyrics are applied by **both** engines (verified: `--init --preset=claude` gives `"bloom": false`); NumPy additionally writes `three` and `segments` (and consumes `segments`), while `init.mjs` writes no `segments` and the template does not read it automatically.
 
 ### 配音：MiMo TTS (Narration)
 
@@ -198,19 +198,19 @@ fn write_line(shot, fact):
 
 **几条可执行的规则 / executable rules**：① 每句一个信息点，要串多件事就拆成多句；② 名词带修饰不如带数字（「17.3 GB 帧缓存」胜过「大量缓存」）；③ 结尾落在重音上，短句收尾比长句有力；④ 与镜头事件一一对齐——**镜头里没发生的事，台词通常别写**（观众会对不上）；⑤ 有旁白的片子里，台词就是节奏：先量旁白实测时长，再按它排镜头（见上一节）。
 
-One idea per line; concrete numbers over adjectives; end on a stressed beat; never narrate something the shot is not showing; and because narration *is* the rhythm, measure each clip first and lay the shots around it.
+One idea per line; concrete numbers over adjectives; end on a stressed beat; skip anything the shot is not showing; and because narration *is* the rhythm, measure each clip first and lay the shots around it.
 
 拿到各段时长后按下表排时间线，再用 `adelay=<ms>:all=1` 把每段摆到它的镜头起点、`amix=inputs=N:normalize=0` 合成一条 `track.wav`（`apad=whole_dur=<总长>` 补齐），最后 `--audio=narration/track.wav` 交给渲染器封装，`-shortest` 保证音画同长。
 
 `--probe` 会把失败原因说清楚：`NOT READY` 后面跟着「没配 API Key」（去 设置 → 插件 → dsh-xiaomi-tts 存一个 Key）、「DSH 没开/端口不对」或「上游没回音频」。**建议先 probe 再假设配音可用**；TTS 失败时也别默认拿静音片交差——先问用户。
 
-For any film with narration, **synthesize every line first and lay out the storyboard from the measured durations**; aligning shots to guessed lengths means redoing the whole timeline. The script talks only to the loopback DSH proxy, never to an outside service. Place each clip at its shot start with `adelay`, mix with `amix` (normalize off), pad to the film length, then hand the track to `--audio=`. `--probe` prints the exact reason when it is not ready — never assume narration works, and never silently ship a mute cut instead of asking.
+For any film with narration, **synthesize every line first and lay out the storyboard from the measured durations**; aligning shots to guessed lengths means redoing the whole timeline. The script talks only to the loopback DSH proxy, not to an outside service. Place each clip at its shot start with `adelay`, mix with `amix` (normalize off), pad to the film length, then hand the track to `--audio=`. `--probe` prints the exact reason when it is not ready — assuming narration works, or shipping a mute cut without asking, tends to cost a full re-render.
 
 ### 0. 询问 —— 先问，再动手 (Interview — ask first)
 
 **建议把这一步放在最前面。** 用 `ask_user_question` 一次问 4–6 个问题，每个选项都写清后果；拿到答复再写分镜。**Ask before you build:** one `ask_user_question` call, 4–6 questions, each option carrying its tradeoff; only then write the storyboard.
 
-必问的六项 / always ask:
+六项建议问 / worth asking:
 
 | # | 问什么 | 选项建议 | 为什么问 |
 |---|---|---|---|
@@ -287,7 +287,7 @@ node skills/music-code-mv/scripts/render.mjs --project=my-mv --contact --w=480 -
 
 它会渲染 N 张等距关键帧，拼成一张 PNG，并打印这张图的路径。**用读图工具看这张图，并对它挑毛病**：构图、可读性、对比度、运动弧线、画面里到底有没有事情发生。这是整条流水线里最便宜、也最值钱的一步——所以建议降到 480×270 草稿分辨率，秒级回环。
 
-Renders N evenly spaced keyframes, tiles them into one PNG and prints its path. **Read that image with the image reader and critique it**: composition, legibility, contrast, motion arc, whether anything actually happens. The cheapest and highest-value step in the pipeline, so always run it at draft resolution (480×270) for a seconds-long loop.
+Renders N evenly spaced keyframes, tiles them into one PNG and prints its path. **Read that image with the image reader and critique it**: composition, legibility, contrast, motion arc, whether anything actually happens. The cheapest and highest-value step in the pipeline, so the default is draft resolution (480×270) for a seconds-long loop.
 
 ### 5. 完整渲染 (Full render)
 
@@ -297,13 +297,13 @@ node skills/music-code-mv/scripts/render.mjs --project=my-mv --out=out/video.mp4
 
 帧是带缓存的：**文件在且渲染签名没变**才复用（签名 = 宽/高/fps/时长/引擎/画质 + 场景 `deps`），所以改尺寸必然整轮重渲；只改 `--out`/`--audio`/`--workers` 不影响复用（实测 `0 rendered, 60 reused`）。想全部重来加 `--force`，编码后清缓存用 `--clean`。
 
-Frames are reused only when the file exists **and** the render signature is unchanged (width / height / fps / duration / engine / quality + scene `deps`), so changing the resolution always re-renders; `--out`/`--audio`/`--workers` do not. `--force` redoes everything, `--clean` purges `frames/` after encoding.
+Frames are reused only when the file exists **and** the render signature is unchanged (width / height / fps / duration / engine / quality + scene `deps`), so changing the resolution re-renders everything while `--out`/`--audio`/`--workers` leave the cache untouched. `--force` redoes everything, `--clean` purges `frames/` after encoding.
 
 ## 伪代码总纲 (Master pseudocode)
 
 整条流水线压成一段**语言无关**的伪代码：换引擎（Chrome / node+skia / NumPy）只换实现，不换结构。注释里的「禁」是红线。
 
-The whole pipeline as language-agnostic pseudocode — switching engines swaps the implementation, never the structure.
+The whole pipeline as language-agnostic pseudocode — switching engines swaps the implementation, not the structure.
 
 ```text
 # 0) 询问：先问再动手 / interview before you build
@@ -426,7 +426,7 @@ Requires Node.js, Google Chrome (or Edge) and ffmpeg. In this workspace they are
 - `reference/environment.md` —— 工具链安装、降级方案、排障
 
 - `reference/authoring.md` — **the authoring playbook**: the full command sequence from an empty workspace to an MP4 (every command run here), choosing the Chrome vs NumPy engine, picking a preset, narration order, reading a contact sheet, real errors and their fixes
-- `reference/teamwork.md` — **team collaboration and working rules**: **division of labour** (when to team up — disjoint write scopes; the scope/no-go template; the lead alone runs git), **discussion** (ship a draft plus a numeric budget for approval before starting anything expensive; ask with options and costs; raise risks with alternatives; record what was approved and re-cut every downstream artefact when a draft changes), **self-review** (a seven-point check before reporting done: gates actually run, every number recomputable, boundaries computed, docs match the code, no debug residue, privacy including image content, no scope overrun — plus cross-checking teammates' numbers), gate timing (never commit mid-edit), delivery and takeovers, quantitative acceptance when you cannot read images, benchmark contamination, what to escalate, and the collaboration loop
+- `reference/teamwork.md` — **team collaboration and working rules**: **division of labour** (when to team up — disjoint write scopes; the scope/no-go template; the lead alone runs git), **discussion** (ship a draft plus a numeric budget for approval before starting anything expensive; ask with options and costs; raise risks with alternatives; record what was approved and re-cut every downstream artefact when a draft changes), **self-review** (a seven-point check before reporting done: gates actually run, every number recomputable, boundaries computed, docs match the code, no debug residue, privacy including image content, no scope overrun — plus cross-checking teammates' numbers), gate timing (avoid committing mid-edit), delivery and takeovers, quantitative acceptance when you cannot read images, benchmark contamination, what to escalate, and the collaboration loop
 - `reference/styles.md` — style vocabulary: T1–T27 styles (display family T13–T24: CRT/vector/VFD/segments/LED matrix/LCD/OLED/e-ink/thermal/hologram/VHS/split-flap; print & pixel T25–T27: halftone/pixel art/datamosh), the M1–M17 motif library (every visual element of the boot→shutdown program), colour logic and the brand two-colour system, and the **layering discipline (fixed six-layer stack, a per-frame bloat test and a across-time monotony test, each with audit pseudocode)**
 - `reference/numpy-pillow.md` — the NumPy + Pillow frame engine: 3D perspective projection, strict grid & type scale, segmented color script
 - `reference/techniques.md` — deterministic rendering, Chrome flags, capture, encoding
@@ -445,10 +445,10 @@ Requires Node.js, Google Chrome (or Edge) and ffmpeg. In this workspace they are
 - **看都不看就交付。** 一定要读联系表。
 - **音画漂移** —— 封装时加 `-shortest`，并核对最终时长。
 
-- **rAF loops** that advance time themselves — the renderer must own `t`.
+- **rAF loops** that advance time themselves — the renderer owns `t`.
 - **Reading the wall clock** anywhere in draw code — breaks frame caching and determinism.
 - **`Math.random()` per frame** — flicker that cannot be reproduced or cached. Use `mulberry32(seed)` from `src/rng.js`, seeded once per shot (Chrome template); the NumPy engine exposes `env.rnd(seed)`.
 - **Unreadable type** over a busy background: add a scrim, or dim the background behind text.
 - **Bloom/exposure blowout** — software renderers amplify emissive values; keep bloom strength near 1.
-- **Shipping without looking.** Always read the contact sheet.
+- **Shipping without looking.** The contact sheet is the cheap check before that.
 - **Audio drift** — mux with `-shortest` and verify the final duration.
