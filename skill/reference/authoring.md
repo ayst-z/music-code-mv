@@ -1,6 +1,6 @@
 # 创作对接指南 (Authoring — from an empty folder to an MP4)
 
-这份指南把「从零创作一支 MV」的整条链路写成可以照抄的命令序列。**每一条命令都在本工作区实跑过**（2026-10-02，Windows / PowerShell，Node v24.19.0，Python 3.14.7，ffmpeg-static），文中的输出就是真实输出。命令一律从工作区根目录 `<workspace>` 执行，脚本相对路径是 `skills\music-code-mv\scripts\`。
+这份指南把「从零创作一支 MV」的整条链路写成可以照抄的命令序列。**每一条命令都在本工作区实跑过**（2026-10-02，Windows / PowerShell，Node v24.19.0，Python 3.14.7，ffmpeg-static），文中的输出就是真实输出。命令默认从工作区根目录 `<workspace>` 执行，脚本相对路径是 `skills\music-code-mv\scripts\`。
 
 This guide is the full path from an empty folder to a delivered MP4, written as copy-pasteable commands. **Every command here was actually run in this workspace** (2026-10-02, Windows / PowerShell, Node v24.19.0, Python 3.14.7, ffmpeg-static) and the outputs quoted are the real ones. Everything runs from the workspace root; the scripts live in `skills\music-code-mv\scripts\`.
 
@@ -13,7 +13,7 @@ The rules do not change: interview first, storyboard before code, every frame a 
 ## 0. 五分钟速览 (The five-minute path)
 
 ```bash
-# 1. 环境自检：必须是 READY / environment check: must print READY
+# 1. 环境自检：期望 READY / environment check: expect READY
 node skills/music-code-mv/scripts/probe.mjs
 
 # 2. 脚手架 + 预设 / scaffold with a preset
@@ -89,7 +89,7 @@ scaffolded <workspace>\test-workdir\authoring-check  (preset: neon-rain)
 
 生成物：`project.json`（宽高/帧率/时长/调色板/`fx`/`three`）、`index.html`、`src/`（舞台、时间轴、PRNG、歌词解析、六个演示场景）、`storyboard.md`、`lyrics.lrc`。
 
-踩过的坑：目录非空又没加 `--force` → `directory not empty: <dir>  (use --force to overwrite)`（exit 2）；预设名打错 → `unknown preset "nope" (available: claude, deepseek, …)`（exit 2），**可用预设名单以这条报错或 `--list-presets` 的输出为准**，别背文档里的清单。
+踩过的坑：目录非空又没加 `--force` → `directory not empty: <dir>  (use --force to overwrite)`（exit 2）；预设名打错 → `unknown preset "nope" (available: claude, deepseek, …)`（exit 2），**可用预设名单以这条报错或 `--list-presets` 的输出为准**，比背文档里的清单可靠。
 
 Gotcha: a non-empty directory without `--force` exits 2 with `directory not empty`; a bad preset id exits 2 and prints the available ids — that list, not the docs, is the source of truth.
 
@@ -101,7 +101,7 @@ Gotcha: a non-empty directory without `--force` exits 2 with `directory not empt
 export default {
   id: 'verse-1',
   start: 8, end: 14,
-  // t = 本镜头的局部时间；env.t = 全局时间（歌词/节拍必须读它）；p = 0..1 进度
+  // t = 本镜头的局部时间；env.t = 全局时间（歌词/节拍读它）；p = 0..1 进度
   // stage.ctx 才是 2d context
   // env = {w,h,fps,duration,palette,project,lyrics,images,lyricAt,stage,t,local,fx}
   draw(stage, t, env, p) { /* ... */ }
@@ -208,7 +208,7 @@ Duration: 00:00:08.00, ...
   Stream #0:1 ... Audio: aac (LC) ... 24000 Hz, mono
 ```
 
-**本工作区没有 `ffprobe`**（`ffmpeg-static` 只带 `ffmpeg.exe`）。要量时长就用 `ffmpeg -i <file>`——它会打印 `Duration` 与所有流，退出码是 1，这是正常的（没有指定输出文件）。别照抄 `ffprobe -i ...`，会 `CommandNotFound`。
+**本工作区没有 `ffprobe`**（`ffmpeg-static` 只带 `ffmpeg.exe`）。量时长用 `ffmpeg -i <file>`——它会打印 `Duration` 与所有流，退出码是 1，这是正常的（没有指定输出文件）；照抄 `ffprobe -i ...` 会得到 `CommandNotFound`。
 
 There is **no `ffprobe`** in this workspace — use `ffmpeg -i <file>`, which prints Duration and every stream (exit code 1 is expected).
 
@@ -286,9 +286,9 @@ python skills/music-code-mv/scripts/audit-presets.py      # 配色纪律测试�
 
 - **四套氛围预设** `neon-rain` / `ink-paper` / `phosphor` / `dusk-lofi`：解决「从零配色」。
 - **AI 模型品牌配色** `claude` / `deepseek` / `gpt` / `gemini` / `grok` / `mistral` / `llama` / `qwen` / `kimi` / `doubao` / `zhipu` / `midjourney` / `fairy`：六角色调色板 + 分镜骨架 + `three` 镜头逻辑。
-- **选法**：先挑气质最接近的一个，不要从默认配色开始调；换成真实歌词；再重写分镜；每改一镜看一次联系表。
-- **浅色预设（`ink-paper`、`claude`）**：正文用 `text`、底用 `bg`，别拿 `dim` 写正文；走 NumPy 引擎时先关 `bloom`（见 3.1）。
-- **自定义预设**：往 `presets/` 放一个 JSON 即可被 `--preset=<名>` 读到，改完必跑 `audit-presets.py`。
+- **选法**：先挑气质最接近的一个（通常比从默认配色开始调更快）；换成真实歌词；再重写分镜；每改一镜看一次联系表。
+- **浅色预设（`ink-paper`、`claude`）**：正文用 `text`、底用 `bg`，`dim` 通常不用于正文；走 NumPy 引擎时先把 `bloom` 关掉更稳（见 3.1）。
+- **自定义预设**：往 `presets/` 放一个 JSON 即可被 `--preset=<名>` 读到，改完跑一次 `audit-presets.py` 能省一轮返工。
 
 Preset ids are whatever `--list-presets` prints. Pick the closest mood, swap in real lyrics, rewrite the shot list, re-check a contact sheet after every shot. Light presets need deliberate contrast; on the NumPy engine turn bloom off first.
 
@@ -318,7 +318,7 @@ node_modules/ffmpeg-static/ffmpeg.exe -i narration/out/n02.wav   # Duration: 00:
 # 4) 按实测时长排镜头边界，再写场景代码
 ```
 
-`--probe` 失败时会直说原因：`NOT READY 连不上 …（DSH 没开？端口不对？）`、`TTS 插件已装但没配 API Key：到 设置 → 插件 → dsh-xiaomi-tts 存一个 Key`、`找不到 TTS 代理路由`、`上游 MiMo 服务没回音频`。**没 probe 就别假设配音可用，TTS 失败也不能拿静音片交差**——先问用户。
+`--probe` 失败时会直说原因：`NOT READY 连不上 …（DSH 没开？端口不对？）`、`TTS 插件已装但没配 API Key：到 设置 → 插件 → dsh-xiaomi-tts 存一个 Key`、`找不到 TTS 代理路由`、`上游 MiMo 服务没回音频`。跳过 probe 的常见代价是：渲染完才发现整条音轨是静音的；TTS 失败时先问用户，比直接交一部静音片更省事。
 
 ### 5.2 摆位与混音 (Place and mix)
 
@@ -328,7 +328,7 @@ node_modules/ffmpeg-static/ffmpeg.exe -i narration/out/n02.wav   # Duration: 00:
 node_modules\ffmpeg-static\ffmpeg.exe -y -loglevel error -i narration\out\n01.wav -i narration\out\n02.wav -filter_complex "[0:a]adelay=500:all=1[a0];[1:a]adelay=4000:all=1[a1];[a0][a1]amix=inputs=2:normalize=0:duration=longest[m];[m]apad=whole_dur=8[t]" -map "[t]" narration\track.wav
 ```
 
-（整条是**一行**，PowerShell 里不要用 `\` 续行。/ It is a single line; PowerShell does not take `\` continuations.）
+（整条是**一行**；PowerShell 里 `\` 续行不生效。/ It is a single line; PowerShell does not take `\` continuations.）
 
 实测注意：`apad=whole_dur=8` **只补不裁**——如果某段被摆到 4.0 s 而它本身 4.96 s，`track.wav` 会是 8.96 s。最终成片由渲染器的 `-shortest` 收口（实测：8.96 s 音轨 × 8 s 画面 → 成片 `Duration: 00:00:08.00`，音轨被裁齐）。**要精确对齐就在滤镜末尾加 `atrim=0:<总长>` 或 `-t <总长>`。**
 
@@ -384,7 +384,7 @@ Six things to check, in order: empty shots, type legibility, motion arc across t
 | `Error opening input file track.wav`（NumPy 引擎） | `--audio=` 按 CWD 解析 | 给从当前目录算起的完整相对路径 |
 | 成片比预期短 | `-shortest` 按最短流收口，音轨/画面谁短裁谁 | 音轨先 `apad`/`atrim` 到全片长度（见 5.2） |
 | 想量时长，`ffprobe` 报 CommandNotFound | 工作区没装 ffprobe | `node_modules/ffmpeg-static/ffmpeg.exe -i <file>` |
-| `frame t=… stuck for 120s — window.renderAt() never returned` | 场景里有死循环或异步等待 | 查该镜头的 `draw`：不许 `await`、不许无界循环 |
+| `frame t=… stuck for 120s — window.renderAt() never returned` | 场景里有死循环或异步等待 | 查该镜头的 `draw`：`await` 或无界循环会让它永远回不来 |
 | `[page error] …` / `scene "x" failed at t=…` | 场景抛异常，帧照渲但内容错 | 看 stderr 里点名的场景 id 与 t |
 | `signature changed: cleared N cached frames`（NumPy） | 正常：`project.json`/`src/render.py` 变了 | 不是错误，缓存在自我失效 |
 | `frames: N rendered, 0 reused` 但你什么都没改 | 改了宽高/fps/时长/引擎/画质 | 预期行为（见 2.6）；草稿期固定用 480×270 |

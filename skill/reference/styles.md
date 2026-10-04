@@ -18,11 +18,11 @@ Each entry: the look, the code primitive, and when to reach for it.
 
 **外观：** 一个歌词词或字填满画面，跟着节拍缩放、滑动、遮罩。
 **原语：** 用 `ctx.measureText` 量宽；动画 `scale`/`letterSpacing`（需要逐字运动时就逐字符绘制）；用 `ctx.save(); ctx.beginPath(); ctx.rect(...); ctx.clip()` 做裁剪。
-**规则：** 一行只讲一个想法，强拍上硬切，可读状态保持 ≥ 0.5 s。永远不要让文字和背景以同样的强度一起动。
+**规则：** 一行只讲一个想法，强拍上硬切，可读状态落在 ≥ 0.5 s。文字与背景同强度一起动会平分焦点——通常只让其中一个动。
 
 **Look:** a lyric word or character filling the frame, scaling/sliding/masking on the beat.
 **Primitives:** measure with `ctx.measureText`, animate `scale`/`letterSpacing` (draw per character when you need per-glyph motion), clip with `ctx.save(); ctx.beginPath(); ctx.rect(...); ctx.clip()`.
-**Rules:** one idea per line, hard cuts on strong beats, hold the readable state for ≥ 0.5 s. Never animate text and background at the same intensity.
+**Rules:** one idea per line, hard cuts on strong beats, the readable state lands at ≥ 0.5 s. Animating text and background at the same intensity splits the focus — usually animate only one.
 
 ## T3 — 故障 (Glitch)
 
@@ -89,7 +89,7 @@ Each entry: the look, the code primitive, and when to reach for it.
 **外观：** 一团带种子的粒子群绕着一个明亮核心打转，每个点都拖着一截低 alpha 的尾巴；轨道投影成扁椭圆，于是整个场在没有 WebGL 的情况下也读得出体积感。
 **原语：** 半径／速度／轨道倾角／相位全部来自 `hash1(i * stride)`（绝不用 `Math.random`），每个粒子的角度是 `phase + speed * t`，每个采样点用 `fillRect`，拖尾 = 在 `t - g * STEP` 上采样的 TRAIL 个重影且 `alpha ∝ (1 - g/TRAIL)^1.7`，核心用 `shadowColor/shadowBlur`，每个节拍一个扩张的 `ellipse` 环。
 **适用：** 前奏、副歌、“一个正在思考的系统”——一种以低 alpha 压在文字底下、但独自也能撑满画面的运动。
-**规则：** 拖尾是画出来的，不是累积出来的。场景代码每帧拿到的都是一张全新的 canvas 状态，永远不要指望上一帧还活着（场景内部不要做全帧淡出缓冲）。
+**规则：** 拖尾是画出来的，不是累积出来的。场景代码每帧拿到的都是一张全新的 canvas 状态——指望上一帧还活着会拿到空画面（所以场景内部通常不做全帧淡出缓冲）。
 
 **Look:** a seeded swarm circling one bright core, every point dragging a short low-alpha tail; orbits projected as shallow ellipses so the field reads as volume without WebGL.
 **Primitives:** radius / speed / orbit tilt / phase all from `hash1(i * stride)` (never `Math.random`), angle `phase + speed * t` per particle, `fillRect` for every sample, trail = TRAIL ghosts sampled at `t - g * STEP` with `alpha ∝ (1 - g/TRAIL)^1.7`, `shadowColor/shadowBlur` for the core, one expanding `ellipse` ring per beat.
@@ -112,8 +112,8 @@ Each entry: the look, the code primitive, and when to reach for it.
 
 **外观：** 示波曲线、柱条带、热力格、跳动的数字——一个“解释这支视频”而不是“表演这支视频”的镜头。
 **原语：** 每个数字都是时间的纯函数：曲线用叠加的正弦加上 `hash2(cell, floor(t*7))` 抖动，柱条用 `0.5 + 0.5*sin(t*hz + k*i)` 包络，热力格用 `sin` 加量化 hash；描边用 `lineTo` + `shadowBlur`，柱子从基线用 `fillRect` 画，热力格用 `globalAlpha` 叠在 `palette.base` 上，最热那一格单独用 `palette.hot`；读数用 `stage.text(env.t.toFixed(2))`。
-**适用：** 遥测、breakdown、桥段、说明性的节拍——凡是歌词已经停下、必须由数据来把意思讲完的地方。
-**规则：** 只推导，不存储。不要关键帧数组，不要时钟，不要分析仪。读数要与前面的镜头连续时用 `env.t`，只属于这个镜头时用该镜头的局部 `t`。
+**适用：** 遥测、breakdown、桥段、说明性的节拍——凡是歌词已经停下、得由数据来把意思讲完的地方。
+**规则：** 只推导，不存储——关键帧数组、时钟、分析仪都不参与绘制。读数要与前面的镜头连续时用 `env.t`，只属于这个镜头时用该镜头的局部 `t`。
 
 **Look:** oscilloscope trace, bar strip, heat grid, ticking numbers — a shot that explains the video instead of performing it.
 **Primitives:** every number is a pure function of time: layered sines plus `hash2(cell, floor(t*7))` jitter for the trace, `0.5 + 0.5*sin(t*hz + k*i)` envelopes for bars, `sin` + quantised hash for heat cells; stroke runs with `lineTo` + `shadowBlur`, bars with `fillRect` from a baseline, heat cells with `globalAlpha` over `palette.base`, hottest cell alone in `palette.hot`; readouts via `stage.text(env.t.toFixed(2))`.
@@ -122,7 +122,7 @@ Each entry: the look, the code primitive, and when to reach for it.
 
 ## 显示器风格 (Display technologies · T13–T24)
 
-画面不只是"什么图案"，还是**什么屏幕**。这一族可以叠在任何其它风格与母题之上；**一个段落只演一种显示器**——换显示器等于换时代，是分段色彩脚本级别的事件，切换贴着段落边界走，不要镜头间乱跳。
+画面不只是"什么图案"，还是**什么屏幕**。这一族可以叠在任何其它风格与母题之上；**一个段落只演一种显示器**——换显示器等于换时代，是分段色彩脚本级别的事件，切换贴着段落边界走更稳，镜头间乱跳会打断分段节奏。
 
 A frame is also *what screen it is on*. This family stacks over any other style and any motif; **one display technology per segment** — switching screens is switching eras, so cut on section boundaries, never mid-verse.
 
@@ -152,7 +152,7 @@ A frame is also *what screen it is on*. This family stacks over any other style 
 
 ### T17 — LED 点阵 (LED dot matrix)
 **外观：** 画面拆成可见灯珠网格，灯珠之间有黑缝；灰阶是**离散 PWM 档位**，过亮的灯珠带十字星芒。
-**原语：** 采样到粗网格再逐灯珠重画（T7 的近亲，输出是亮点而非字符）；灰阶量化 `round(v*L)/levels` 必须配抖动，否则渐变分层；灯珠=`fillRect` + 一次 `shadowBlur`。
+**原语：** 采样到粗网格再逐灯珠重画（T7 的近亲，输出是亮点而非字符）；灰阶量化 `round(v*L)/levels` 建议配抖动，否则渐变会分层；灯珠=`fillRect` + 一次 `shadowBlur`。
 **适用：** 巨幕、执行队列 16 连（M12）、频谱城市（M5）——LED 天生就是"格子事件"。
 **Look:** visible LED cells with dark gaps and discrete PWM greys (dither or banding appears). Billboards, queue grids (M12), spectrum cities (M5).
 
@@ -170,7 +170,7 @@ A frame is also *what screen it is on*. This family stacks over any other style 
 
 ### T20 — 电子墨水 (E-ink)
 **外观：** 纸感 1-bit，只有黑白与抖动网点；**全屏刷新会闪一次黑**（波形控制器的签名），刷新间隙留上一页内容的浅残影；完全不发光——没有暗角、没有辉光。
-**原语：** 阈值 + 有序/蓝噪声抖动（T7）；闪黑=段落边界处 2–4 帧全黑→恢复；残影=上一个"页面"（t 的上一段）以 8–12% 灰叠加。**禁止 bloom。**
+**原语：** 阈值 + 有序/蓝噪声抖动（T7）；闪黑=段落边界处 2–4 帧全黑→恢复；残影=上一个"页面"（t 的上一段）以 8–12% 灰叠加。**这一族通常不加 bloom。**
 **适用：** 字卡、定义与引文（M3）、章节卡；`ink-paper` 预设的天然宿主。
 **Look:** paper-like 1-bit dither, a black flash on full refresh, faint ghost of the previous page, zero glow. Type cards, definitions, chapter cards; `ink-paper`'s natural host.
 
@@ -206,7 +206,7 @@ A frame is also *what screen it is on*. This family stacks over any other style 
 
 Every display has a few physical traits without which it stops reading as that display. Tick them off against the contact sheet; the last column names the primitive you can call.
 
-| 显示器 | 必须命中（少一条就不像）| 最容易漏的 | 落地原语 / primitive |
+| 显示器 | 宜命中（少一条就不像）| 最容易漏的 | 落地原语 / primitive |
 |---|---|---|---|
 | **T13 CRT** | 桶形曲率 · 荫罩三色点或光栅条（含**一根**阻尼线）· 亮度驱动的扫描线 · 余辉重影 · 开关机动画 · 消磁抖 · 行频失步撕裂 · **束斑软焦** | 只做曲率不做**粒子模糊**（束斑是软光斑）；扫描线画成黑条而非乘性压暗 | `stage.barrel` · `stage.mask('triad'/'grille')` · `stage.scanlines` · `stage.beamBlur` · `stage.sliceGlitch` |
 | **T14 矢量屏** | 无像素网格 · 发光笔画 · 指数余辉 · 线宽随束流 · **没有扫描线** | 手贱加了扫描线——矢量屏没有光栅 | 加法发光 + `t−g` 重画 3–5 遍 |
@@ -221,7 +221,7 @@ Every display has a few physical traits without which it stops reading as that d
 | **T23 VHS** | 跟踪条 · 色度渗出 · 掉磁噪点 · 头切换噪声带 · 帧抖 · 画面柔化 | 只加噪点不给跟踪条 → 像信号差，不像录像带 | `stage.sliceGlitch` + 色度错位 + 底部噪声带 |
 | **T24 机械翻牌** | 中缝切开字 · 上半叶先落 · **列错开 40–90ms** · 停稳回弹 · 哑光牌面 | 整排同时到位 → 机械质量感全没了 | `hash(col)` 做列延迟 + `scaleY` 叶片 |
 
-**通用两条：** ① 显示器是**一层**，叠在母题与排版**下面**，同一段落只用一种（见「组合搭配」）；② 换显示器=换时代，切换必须贴段落边界，并先过一道黑场或刷新闪。
+**通用两条：** ① 显示器是**一层**，叠在母题与排版**下面**，同一段落只用一种（见「组合搭配」）；② 换显示器=换时代，切换建议贴段落边界，并先过一道黑场或刷新闪。
 
 **Two rules for all of them:** a display is *one layer*, placed under motifs and typography, one per segment; and switching displays is switching eras — cut on a section boundary through black or an e-ink refresh flash.
 
@@ -309,13 +309,13 @@ on_segment_boundary: fade_to_black(0.15s) | eink_refresh_flash(); then switch(ki
 
 ### T27 — 数据砸裂 (Datamosh)
 **外观：** 压缩本身坏掉：P 帧拿旧帧当参考，运动把上一帧像素**拖成彩虹涂抹**；8×8 DCT 块沿运动矢量错位，局部区域滞留旧画面。
-**原语：** 确定性模拟——把 `t−δ` 的画面按运动场平移后，在 8×8 块级与当前帧混合：`mask = hash(block, floor(t*hz))` 决定哪块用旧帧，每块独立平移 ≤16px；**块必须 hash 驱动，不许真随机**。
+**原语：** 确定性模拟——把 `t−δ` 的画面按运动场平移后，在 8×8 块级与当前帧混合：`mask = hash(block, floor(t*hz))` 决定哪块用旧帧，每块独立平移 ≤16px；**块建议 hash 驱动**（真随机会丢掉可复现性与帧缓存）。
 **适用：** M11 崩溃、`grok` 的报错瞬间、转场一击。**与 T3 的分工**：T3 是剪辑故障（切片位移），T27 是编码故障（块与涂抹）。
 **Look:** corrupted compression — old-frame pixels dragged by the motion field, 8×8 blocks displaced, deterministic hash per block. The archetypal collapse visual (M11); T3 is an editing glitch, T27 is an encoder glitch.
 
 ## 母题库 (Motif library)
 
-T1–T27 是**怎么看**（风格），母题是**看什么**（镜头内容）。这支「从开机到关机」的程序把元素排成一条节拍链；顺序按段落走、时间锚到音频，**不要按写死的时间码排**。每个母题就是一个镜头的一件事（规矩 4），节拍建议链：
+T1–T27 是**怎么看**（风格），母题是**看什么**（镜头内容）。这支「从开机到关机」的程序把元素排成一条节拍链；顺序按段落走、时间锚到音频，**写死的时间码通常会在改时长时失效**。每个母题就是一个镜头的一件事（规矩 4），节拍建议链：
 
 T1–T27 say *how* a shot looks; a motif says *what* it is about. The "boot → shutdown" program orders the elements into a beat chain: follow the sections, anchor timing to the audio, **never to baked-in timecodes**. One motif = one event per shot (rule 4). Suggested chain:
 
@@ -408,7 +408,7 @@ T1–T27 say *how* a shot looks; a motif says *what* it is about. The "boot → 
 ### M10 — 挑战神明 / 非法参数
 **外观：** 引擎**实时抛出的真实报错与调用栈**上屏（一字不改，这是全片最响的字），IEEE-754 把一个数推进 `Infinity → NaN`，上下文窗口计数器顶到溢出变红。
 **原语：** 报错文本 = T1 打字机 + `hot` 高亮帧号与行号；精度丢失 = 单个 float 显示 `toFixed` → `1e309` → `NaN` 的三态硬切；溢出计数 = 逼近 `max` 时数字改用 `hot` 并抖动（T2），到顶触发一次 T3。
-**适用：** 冲突段、"ILLEGAL ARGUMENTS"字卡；报错文字必须**可读且完整**（规矩 5），不要做背景噪声。
+**适用：** 冲突段、"ILLEGAL ARGUMENTS"字卡；报错文字通常**可读且完整**（规矩 5），当背景噪声会丢掉信息。
 
 **Look:** real engine errors and stack traces thrown on screen verbatim (the loudest type in the film), a number pushed through IEEE-754 into `Infinity → NaN`, a context-window counter maxing out and turning red.
 **Primitives:** T1 typewriter with `hot` on file/line; three-state hard cut `toFixed → 1e309 → NaN`; counter nearing `max` recolours to `hot` and shakes (T2), then one T3 hit at the top.
@@ -417,7 +417,7 @@ T1–T27 say *how* a shot looks; a motif says *what* it is about. The "boot → 
 ### M11 — 崩溃 / Collapse
 **外观：** 晶格在负载下坍塌（结构整体 k 塌），GPU 像素排序把画面按亮度重排成条纹瀑布，训练发散：损失曲线冲出画面变成 `NaN`。
 **原语：** 晶格坍塌 = 投影后的顶点按 `t` 向重心插值 + 一次 T3；像素排序 = 整帧行内 `argsort(luminance)` 重排（NumPy 一把出，正是像素级数学镜头）；发散 = 曲线域自适应放大 → 颜色从 `base` 过渡到 `hot` → 末帧写 `NaN`。
-**适用：** 崩溃段；与 M10 之间硬切，崩之前必须先有"顶到极限"。
+**适用：** 崩溃段；与 M10 之间硬切，崩之前通常先有"顶到极限"。
 
 **Look:** a lattice collapsing under load, GPU pixel-sorting reordering the frame into a striped waterfall, a loss curve leaving the frame and becoming `NaN`.
 **Primitives:** projected vertices interpolating to the centroid + one T3; row-wise `argsort(luminance)` over the whole frame (one NumPy pass — the archetypal pixel-math shot); adaptive domain blow-up, `base` → `hot`, last frame prints `NaN`.
@@ -425,7 +425,7 @@ T1–T27 say *how* a shot looks; a motif says *what* it is about. The "boot → 
 
 ### M12 — 处决 / 执行队列
 **外观：** fork 炸弹 `:(){:|:&};:` 长成一棵**三维 H 树**，进程数 1→4→…→4096，每翻一倍切镜随之翻倍；执行队列 16 连——16 个格子依次点亮又同时熄灭。
-**原语：** H 树 = 递归函数（深度预计算，`t` 控制可见深度，90° 旋转逐层）；计数器 = `4^depth`，位数用等宽字形对齐；16 连 = 4×4 栅格 + `floor(t*hz)` 索引，最后一格熄灭时全屏硬切黑。**递归深度必须封顶**，否则渲染会跟着 fork 炸弹一起死。
+**原语：** H 树 = 递归函数（深度预计算，`t` 控制可见深度，90° 旋转逐层）；计数器 = `4^depth`，位数用等宽字形对齐；16 连 = 4×4 栅格 + `floor(t*hz)` 索引，最后一格熄灭时全屏硬切黑。**递归深度建议封顶**——不封的话渲染会跟着 fork 炸弹一起死，进程内存会被吃光。
 **适用：** 高潮段；密度与速度都在全片最高点。
 
 **Look:** the fork bomb `:(){:|:&};:` growing into a 3-D H-tree, 1→4→…→4096 processes, a cut per doubling; a 16-cell execution queue lighting in sequence then going dark together.
@@ -453,7 +453,7 @@ T1–T27 say *how* a shot looks; a motif says *what* it is about. The "boot → 
 ### M15 — 离开 / 走廊尽头
 **外观：** 你已离开：一条单点透视走廊，尽头的门是唯一光源，步伐让栅格微微起伏，最后一格灯熄灭。
 **原语：** 走廊 = 一消失点投影的矩形阵列（同一投影函数换几何，见 NumPy 引擎的 3D 节），深度雾把远处压向 `bg`；步频 = `|sin(t·π·step)|` 轻推相机 y。
-**适用：** 告别段；画面必须**只剩这一件事**——"一个镜头只发生一件事"在这里是字面意思。
+**适用：** 告别段；画面通常**只剩这一件事**——"一个镜头只发生一件事"在这里是字面意思。
 
 **Look:** you have left: a one-point-perspective corridor with a door as the only light source; the grid breathes with each step, the last lamp dies.
 **Primitives:** rectangle array projected to one vanishing point (same projector, different geometry — see the NumPy engine's 3D section); depth fog pulls the far end into `bg`; gait = `|sin(t·π·step)|` nudging camera y.
@@ -462,7 +462,7 @@ T1–T27 say *how* a shot looks; a motif says *what* it is about. The "boot → 
 ### M16 — 擦除 / 碎片回声
 **外观：** 画面被逐行擦掉，露出底下的 `bg`；残片在边缘闪烁两三帧就走。
 **原语：** 擦除 = 按行/按 Voronoi cell 的阈值 mask 从 M9 复用；残片 = T3 的 2–6 帧窗口，绝不停留。
-**适用：** M15 → M17 之间的转场；擦除之后必须接一个**更空**的镜头。
+**适用：** M15 → M17 之间的转场；擦除之后建议接一个**更空**的镜头（密度对比才立得住）。
 
 **Look:** the frame erased row by row to bare `bg`; leftovers flicker two or three frames and leave.
 **Primitives:** row/cell threshold mask reused from M9; leftovers live in T3's 2–6 frame window, never longer.
@@ -503,7 +503,7 @@ The `hot` colour is spent once per segment; body text is `text` on `bg` at ≥ 4
 
 1. **品牌主色 → `base`**（Claude 橙 `#d97757`、DeepSeek 蓝 `#4d6bfe`、GPT 黑 `#000000`）。
 2. **品牌中性色 → `bg` / `text`**（Clauel 象牙白 `#f0eee6`、GPT 白 `#ffffff`、DeepSeek 近黑 `#0b0f1a`）。
-3. **取主色的补色或高亮变体 → `accent`**，要求比 `base` 亮一档。
+3. **取主色的补色或高亮变体 → `accent`**，宜比 `base` 亮一档（暗底上才分得出来）。
 4. **`hot` 从品牌里挑最饱和的那一小块**（或自己留一个：朱砂、品红），一段一次。
 5. **`dim` = `bg` 向 `base` 混 15–25%**，结构线用它。
 6. 落地前跑对比度：`text` vs `bg` ≥ 4.5:1；不达标换角色的明度，不换角色的职务。
@@ -518,8 +518,8 @@ Step 1–6 is exactly how the model presets in `presets/` were built; each carri
 
 An audit of twelve mainstream models' official colours (official site CSS + logo SVGs, archived at `_research/ai-brand-palettes.json`) shows nearly every mature brand is the same structure:
 
-1. **一个高饱和强调色 + 一片近零彩度的中性场。** Claude 赤陶 `#d97757` 于象牙白，DeepSeek 蓝 `#4d6bfe` 于近黑，豆包蓝 `#0057ff` 于深灰——强调色从不与背景比彩度。对应到六角色：**`base` 是那个强调色，`bg` 保持中性**。
-2. **渐变是身份，不是表面。** 只有 Gemini（`#4285f4→#9b72cb→#d96570`）与 Mistral（`#fec63a→#fa500f→#e61300`）官方编码了渐变，且都只给 logo/标题，UI 保持平色。对应到分段色彩脚本：**渐变留给标题卡与身份镜头，正片用平色分段**。
+1. **一个高饱和强调色 + 一片近零彩度的中性场。** Claude 赤陶 `#d97757` 于象牙白，DeepSeek 蓝 `#4d6bfe` 于近黑，豆包蓝 `#0057ff` 于深灰——强调色从不与背景比彩度。对应到六角色：**`base` 是那个强调色，`bg` 呈中性**。
+2. **渐变是身份，不是表面。** 只有 Gemini（`#4285f4→#9b72cb→#d96570`）与 Mistral（`#fec63a→#fa500f→#e61300`）官方编码了渐变，且都只给 logo/标题，UI 走平色。对应到分段色彩脚本：**渐变留给标题卡与身份镜头，正片用平色分段**。
 3. **暗底是带色的近黑，不是 `#000000`。** `#141413`（Claude，暖）、`#151524`（Mistral，冷）、`#191919`（豆包）——纯黑会吃掉强调色下面那层冷暖倾向。例外是刻意单色的 GPT/Grok，它们就该是 `#000000`。
 4. **文字取自背景那一对，永远不是强调色。** 正文 = near-black / off-white，`hot` 与 `accent` 不参与正文（六角色纪律的由来）。
 
@@ -529,7 +529,7 @@ Formula: one accent + a gradient derived from it + a tinted near-black + an off-
 
 ### 分段色彩脚本 (Segmented color script)
 
-全片按段落切成**色彩章节**：段内六角色稳定，段间硬切（或 0.3–0.5s 交叉溶解），**角色跨段守恒**——换的是衣服，不是身份。`segments` 写进 `project.json`，段边界贴 intro / verse / chorus / exit 的段落标记，不贴任意秒数；雾色、bloom 色、暗角色一律取**当前段**的调色板。副歌的暗版（M13）就是同一构图换一套更冷的段色。
+全片按段落切成**色彩章节**：段内六角色稳定，段间硬切（或 0.3–0.5s 交叉溶解），**角色跨段守恒**——换的是衣服，不是身份。`segments` 写进 `project.json`，段边界贴 intro / verse / chorus / exit 的段落标记，不贴任意秒数；雾色、bloom 色、暗角色都取**当前段**的调色板。副歌的暗版（M13）就是同一构图换一套更冷的段色。
 
 **引擎差异：** NumPy 引擎**自动**按 `segments` 换段色（`chapter_at()` 读 `env.segments`）；Chrome 模板**不会自动读它**——模板的 `env` 里没有 `segments` 字段，镜头要自己取 `env.project.segments`，否则 `segments` 只是个没人消费的字段。
 
@@ -620,7 +620,7 @@ Layering order is fixed — depth, display, subject, motif, type, then finishing
 ### 三条硬规则
 
 1. **切在拍子上 (cut on the beat)**：有配乐就按 BPM 切。`music.py` 给出 BPM（默认 104 → 拍 0.577s、小节 2.31s），段落与子镜边界**对齐到拍或半拍**；转场（黑场/闪切）压在重音上——配乐每段头部自带 impact，正好当切点的钉子。
-2. **没有静止帧 (no static holds)**：相邻两帧必须有可见差异。整段停留 ≥0.5s 而无运动 = 违规。空档用**连续量**填：漂移粒子、呼吸辉光、缓慢推进的相机、走秒/进度条。
+2. **没有静止帧 (no static holds)**：相邻两帧的目标是有可见差异（判据 `mean|Δ| > 0.5`）；整段停留 ≥0.5s 而无运动，通常意味着这里卡住了。空档用**连续量**填：漂移粒子、呼吸辉光、缓慢推进的相机、走秒/进度条。
 3. **缓动短促 (snappy easing)**：入场 `easeOutBack`/`easeOutCubic`，**0.25–0.5s**；出场更快（0.15–0.3s）。1–2s 的长缓动是节奏拖沓的头号原因。
 
 ### 量化自检（可直接跑）
@@ -632,7 +632,7 @@ fn audit_rhythm(shots, bpm):
         assert abs(round(s.start / (beat/2)) * (beat/2) - s.start) <= 0.06   # 起点对齐半拍
         assert 1.5 <= s.len <= 5.0                       # 子镜 1.5–5s（段落边界不受此限）
     for (f_prev, f_cur) in consecutive_rendered_frames:
-        assert mean_abs_diff(f_prev, f_cur) > 0.5         # 连续动画：相邻帧必须有差异
+        assert mean_abs_diff(f_prev, f_cur) > 0.5         # 连续动画：相邻帧要有差异
     for e in entrances:
         assert e.duration <= 0.5                          # 缓动短促
 ```
@@ -650,3 +650,34 @@ fn audit_rhythm(shots, bpm):
 | 配乐在动画面不动 | 音画不同步 | 子镜切点对齐拍点，画面重音与鼓点同时发生 |
 
 Rhythm is measurable: cut on the beat (boundaries snapped to `60/BPM`, transitions landing on the score's impacts), never hold a frame static for more than half a second — consecutive-frame mean|Δ| must stay above 0.5, which pairs with the monotony test (3-second windows) by watching every adjacent pair — and keep entrances at 0.25–0.5 s with exits faster. Long easings are the number-one cause of a sluggish feel.
+
+## 值得学的外部参考 (External references worth stealing from)
+
+三条公开影片，各带走一件武器。它们是**索引**，不是模板——怎么用是创作自由。
+
+### R1 · pdoom / AGI 概念 MV
+- **出处**：《吓哭了Opus5.5 AGI概念MV》157s · 3840×2160 · 开源 `github.com/mexicat/pdoom-video`（MIT，README 已核读）
+- **它真实的做法（从 README / ENGINE 摘）**：
+  1. **子帧平均的运动模糊**：每帧 = 快门窗口内**多个子帧的平均**（`--shutter 0.2` = 五分之一帧时），**自适应采样**——静止 12、常规运镜 36、甩镜/急推 108–324；再加子帧带来的变化 < `--tol`（3/255）就停。快速运动因此是**连续拖影**而不是几步残影。
+  2. **逐词卡拉OK排版**：Demucs 分轨 + CTC 强制对齐 + Whisper 交叉验证 → 词级时间戳；**场景窗锚定歌词行并 snap 到节拍网格**（132.007 BPM）——与本文「节奏」一节是同一个结论的独立出现。
+  3. **同一条确定性原则**：帧 = 歌曲时间的纯函数，浏览器实时预览与离线导出**逐帧一致**；渲染架构同样是 headless Chrome → 帧 → ffmpeg。
+  4. **后期链**：bloom + **halation（亮部向暗部渗光，胶片感）** + grain；字体成套（Archivo / IBM Plex Mono / Cormorant + 单笔画绘图字体）。
+  5. **4K 的诚实成本**：真·物理 4K（场景按 1920×1080 逻辑像素布局，只是更锐）；**逐 4K 像素的颗粒贵在编码**——CRF16 ≈ 670 Mbit/s（整首 13GB）、CRF18 ≈ 450、CRF20 ≈ 230；整曲在 M5 Pro 上约 2.5 小时。
+- **可迁移的**：确定性拖影先用 `stage.trail()`（离散残影、零额外渲染成本）；**子帧平均**这类真快门模糊是「拿渲染时间换质感」的选项——同一物体在 `t, t+shutter·Δ…` 各渲一遍再平均，放 np 引擎或草稿尺寸才划算，4K 全量按上面那组诚实数字计价。
+- **顺带偷的**：数字当主角（p(doom) 百分比、倒计时、概率曲线推到最大号字，T12 的极端用法）；**缓慢劣化**（字形碎裂、色偏随时间连续累积，与 T3 的区别是慢而连续——像系统在慢慢死去，而不是被打了一拳）。
+
+### R2 · 电影感短片《我从未见过太阳》
+- **出处**：272s · **3840×1608（2.39:1 宽银幕）** · 观感：孤独、惊悚、「坐在世界后头」
+- **可迁移的**：
+  1. **宽银幕遮幅**：2.39:1 上下信箱边本身就是电影感开关——对 16:9 源画 letterbox 即得，比任何滤镜都"像电影"。
+  2. **慢与空**：长镜头、极少信息、大量留白。与「节奏紧凑」并不冲突：**紧凑的是内部运动**（雾、光、粒子持续漂移），**放松的是剪辑频率**。
+  3. **单点叙事 + 极端明暗**：一个孤独主体、一次只给一条线索；情绪靠「不给」而不是「给满」。
+
+### R3 · 聊天窗即世界《world.execute(me)》(dsh 向)
+- **出处**：212s · 4K · Mili《world.execute(me)》· 界面致敬 DeepSeek Harness 前端 · 全站榜峰 73、43.7 万收藏
+- **可迁移的**：
+  1. **UI 就是舞台**：聊天窗即世界——歌词 = 消息气泡、叙事 = 打字过程、情绪 = 输入状态（「正在输入…」/ 已读 / 撤回）。T1/T2 叠一层**气泡与会话状态**即得。
+  2. **立绘表演**：静态角色图配合表情切换、位移与缩放做「表演」（`env.images` 图层现成支持）。
+  3. **界面状态当事件**：窗口最小化、错误弹窗、断连重连——都是现成的转场与情绪节点（M 系母题的变体）。
+
+> 元数据取自 B 站公开接口（标题 / 时长 / 分辨率 / 描述 / 榜单成绩）；R1 的技术细节读自**开源仓库 README 原文**。R2 / R3 的「可迁移的」是根据公开描述与本 skill 现有能力做的**迁移推断**，不是对原片的逐帧复述。

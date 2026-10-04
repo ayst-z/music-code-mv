@@ -10,7 +10,7 @@ node scripts/init.mjs --list-presets               # 列出全部预设
 python scripts/render-np.py --init=my-mv --preset=claude   # NumPy 引擎同一套预设
 ```
 
-**注意两条（实测）：** ① 跑 `render-np.py` 的 python 必须自带 numpy + Pillow（PATH 上的裸 `python` 常常没有，会直接报 `render-np.py needs numpy and Pillow`）；② **两个引擎都会套 `palette` / `fx` / `duration` / 分镜 / 占位歌词**（实测 `--init --preset=claude` → `project.json` 里 `"bloom": false`）；差别在于 NumPy 引擎**还会写 `three` 与 `segments`**（`segments` 它自己会消费），而 Chrome 的 `init.mjs` 不写 `segments`——Chrome 模板也不会自动读它，镜头要自己取 `env.project.segments`。浅色底上若把 `fx.bloom` 手动打开，整屏会过曝，见 `reference/authoring.md` 3.1。
+**注意两条（实测）：** ① 跑 `render-np.py` 的 python 需要自带 numpy + Pillow（PATH 上的裸 `python` 常常没有，会直接报 `render-np.py needs numpy and Pillow`）；② **两个引擎都会套 `palette` / `fx` / `duration` / 分镜 / 占位歌词**（实测 `--init --preset=claude` → `project.json` 里 `"bloom": false`）；差别在于 NumPy 引擎**还会写 `three` 与 `segments`**（`segments` 它自己会消费），而 Chrome 的 `init.mjs` 不写 `segments`——Chrome 模板也不会自动读它，镜头要自己取 `env.project.segments`。浅色底上若把 `fx.bloom` 手动打开，整屏会过曝，见 `reference/authoring.md` 3.1。
 
 **Two measured notes:** the Python running `render-np.py` must ship numpy + Pillow, and **both engines now apply `palette`, `fx`, `duration`, storyboard and lyrics** (verified: `--init --preset=claude` yields `"bloom": false`). The NumPy engine additionally writes `three` and `segments` (and consumes `segments`); Chrome's `init.mjs` writes neither, and the Chrome template does not read `segments` on its own.
 
@@ -106,7 +106,7 @@ A preset only sets appearance and skeleton; the six scene modules under `src/sce
 2. **换掉占位歌词**：把 `lyrics.lrc` 换成真实歌词，并让时间点对齐副歌。Replace the placeholder cues with real lyrics.
 3. **再改分镜**：预设给的是六镜头骨架，镜头内要发生什么仍然由你决定。Then rewrite the shot list.
 4. **每改一镜就看一次联系表**（秒级），确认文字在预设配色上仍然可读。Check a contact sheet after every shot change.
-5. **浅色预设（`ink-paper`、`claude`）特别注意对比度**：文字用 `text`，背景用 `bg`，不要用 `dim` 画正文。Light presets need deliberate contrast.
+5. **浅色预设（`ink-paper`、`claude`）特别注意对比度**：文字用 `text`，背景用 `bg`，`dim` 通常不用于正文。Light presets need deliberate contrast.
 6. **模型预设配母题**：分镜排到 M1–M17 的某个母题时，看 `threejs.md` 的关联表选对应预设的 3D 语言。Match model presets to motifs via the threejs.md mapping.
 
 ## 自定义预设 / a preset of your own
@@ -114,5 +114,5 @@ A preset only sets appearance and skeleton; the six scene modules under `src/sce
 预设就是一个 JSON 文件：把它放进 `presets/`，`--preset=<文件名>` 立刻可用——**两个引擎都认，且都会套 `palette`/`fx`/`duration`/分镜/占位歌词**（NumPy 另写 `three` 与 `segments`；`persona`/`style` 是给智能体用的，不进 `project.json`）。
 A preset is one JSON file: drop it in `presets/` and `--preset=<name>` picks it up — both engines apply palette, fx, duration, storyboard and lyrics (NumPy also writes `three` and `segments`; `persona`/`style` are for the agent, not for `project.json`).
 
-**加完必跑配色纪律测试：** `python scripts/audit-presets.py` —— R1 对比度 ≥4.5:1、R2 accent 可辨、R3 hot 可辨、R4 结构完整（含 `three.roles`），exit 1 即违规；`--json` 出机读结果。末行格式是 `N presets, M issues`（本工作区实跑 `17 presets, 0 issues`；这个脚本只用标准库，裸 `python` 就能跑）。
+**加完跑一次配色纪律测试：** `python scripts/audit-presets.py` —— R1 对比度 ≥4.5:1、R2 accent 可辨、R3 hot 可辨、R4 结构完整（含 `three.roles`），exit 1 即违规；`--json` 出机读结果。末行格式是 `N presets, M issues`（本工作区实跑 `17 presets, 0 issues`；这个脚本只用标准库，裸 `python` 就能跑）。
 **After adding, run the discipline test:** `python scripts/audit-presets.py` (contrast, accent, hot, structure incl. `three.roles`; exit 1 on violation).
