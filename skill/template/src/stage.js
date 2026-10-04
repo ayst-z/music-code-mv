@@ -56,8 +56,6 @@ export function createStage({ width, height }) {
     return vig;
   }
 
-  let noiseShift = 0;
-
   const MONO = 'ui-monospace, "Cascadia Mono", Consolas, "DejaVu Sans Mono", monospace';
 
   const stage = {
@@ -79,12 +77,38 @@ export function createStage({ width, height }) {
       ctx.fillRect(0, 0, width, height);
     },
 
-    /** Fade the previous frame toward a colour — cheaper than clearing, gives motion trails. */
+    /** Fade the previous frame toward a colour — cheaper than clearing, gives motion trails.
+     *  注意：这条路**读的是上一帧**，多 worker 乱序渲染时不可复现；要可复现的拖影用 trail()。 */
     fade(color, amount) {
       ctx.save();
       ctx.globalAlpha = amount;
       ctx.fillStyle = color;
       ctx.fillRect(0, 0, width, height);
+      ctx.restore();
+    },
+
+    /**
+     * 确定性长曝光拖影 / deterministic shutter trails —— 与 fade() 的区别是**不读上一帧**：
+     * 只把 draw 在 t, t−step, t−2step… 各画一遍、alpha 递减，所以帧仍然是 t 的纯函数，
+     * 多 worker 乱序、断点续渲都不改结果（参考 styles.md R1：pdoom 风的快门拖影）。
+     *
+     *   stage.trail(t, (tt) => drawMover(tt), { step: 0.045, samples: 6, decay: 0.62 });
+     *
+     * trail 已按越早越淡设好 globalAlpha；回调里通常什么都不用做，
+     * 只有想按颜色逐笔加权时才用第二个参数（那种情况自己把 globalAlpha 设回 1 再画）。
+     */
+    trail(t, draw, opts = {}) {
+      const step = opts.step ?? 0.045;
+      const samples = opts.samples ?? 6;
+      const decay = opts.decay ?? 0.62;
+      ctx.save();
+      for (let i = samples; i >= 1; i--) {          // 先画远的（更淡），近的压在上面
+        const a = Math.pow(decay, i);
+        ctx.globalAlpha = a;
+        draw(t - i * step, a);
+      }
+      ctx.globalAlpha = 1;
+      draw(t, 1);
       ctx.restore();
     },
 
@@ -106,12 +130,13 @@ export function createStage({ width, height }) {
       ctx.restore();
     },
 
-    /** Film grain. The offset drifts with t so it shimmers without reading a clock. */
+    /** Film grain. The offset changes with t so it shimmers without reading a clock.
+     *  连续 t 驱动 → 任意 fps 下每帧都不同；早先用 Math.floor(t*24) 的写法在 120fps 下
+     *  五帧共用一个偏移（等于静止），且 noiseShift 是算了没用的死变量。 */
     grain(t, alpha = 0.45) {
       if (!noisePattern) noisePattern = ctx.createPattern(noiseCanvas, 'repeat');
-      noiseShift = (noiseShift + 37) % NOISE;
-      const ox = -((hash1(Math.floor(t * 24) * 91.7) * NOISE) | 0);
-      const oy = -((hash1(Math.floor(t * 24) * 57.3 + 5) * NOISE) | 0);
+      const ox = -((hash1(t * 91.7) * NOISE) | 0);
+      const oy = -((hash1(t * 57.3 + 5) * NOISE) | 0);
       ctx.save();
       ctx.globalAlpha = alpha;
       ctx.translate(ox, oy);

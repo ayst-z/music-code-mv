@@ -44,7 +44,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
 import { createProgress, parseProgressLine } from './lib/progress.mjs';
 import { createSignature, loadSignatures, saveSignatures } from './lib/signature.mjs';
-import { pickEncoder, buildEncodeArgs, runFfmpeg } from './lib/encode.mjs';
+import { pickEncoder, buildEncodeArgs, runFfmpeg, validateEncodeOptions } from './lib/encode.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -268,8 +268,14 @@ async function encode() {
     process.exit(4);
   }
   const hdr10 = !!opt.hdr10;
-  if (hdr10 && encoder.family === 'qsv') {
-    log('WARNING: QSV cannot embed HDR10 mastering metadata; use --encoder=libx265 for a compliant master');
+  // 通用校验（encode.mjs:111，buildEncodeArgs 入口也会兜底调用）——
+  // main 已在渲染前把 HDR10 定成 libx265，这里是编码点的最后一道核对；
+  // 它替换了原先那句掩盖失败的 QSV 警告（P1-R2）。
+  try {
+    validateEncodeOptions({ hdr10, encoder });
+  } catch (e) {
+    console.error('[render] ' + e.message);
+    process.exit(4);
   }
   if (DEPTH >= 10) {
     // 12-bit is a software-x265 job (hw paths top out at 10-bit P010); 10-bit
@@ -719,6 +725,24 @@ async function runSupervisor() {
 
 // ---------------------------------------------------------------- main
 if (ENGINE === 'chrome' && !CHROME) { console.error('No Chrome/Edge found. Pass --chrome=<path> or set CHROME_PATH.'); process.exit(3); }
+
+// HDR10 必须在**渲染开始前**落定编码器（CODE-REVIEW P1-R2）：本构建的硬件编码器都不接受
+// yuv420p10le，nvenc 也没有 -master_display/-max-cll —— 渲完上万帧才在编码阶段炸，是最贵的失败形态。
+//   · 没显式指定 --encoder → 自动定为 libx265（合规母版路径）
+//   · 显式指定了非 libx265 → 立刻报错并给出改法
+if (opt.hdr10) {
+  const want = opt.encoder;
+  if (want && want !== 'auto' && want !== 'libx265') {
+    console.error('[render] --hdr10 needs libx265 in this ffmpeg build — hardware encoders reject ' +
+      'yuv420p10le and lack -master_display/-max-cll. Got --encoder=' + want +
+      '. Fix: drop --encoder (auto becomes libx265) or pass --encoder=libx265');
+    process.exit(4);
+  }
+  if (!want || want === 'auto') {
+    opt.encoder = 'libx265';
+    log('HDR10 → encoder libx265 (compliant master, chosen before rendering)');
+  }
+}
 
 if (!IS_WORKER && WORKERS > 1 && !opt.contact && !opt.stills && !opt.sheet) {
   await runSupervisor();
