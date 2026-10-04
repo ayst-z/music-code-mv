@@ -86,7 +86,7 @@ if 队友正在写(文件 mtime 很新 or list_agents=running):
 下结论：只信同一次运行内的相对比较，别信跨运行的绝对值
 ```
 
-## 8. 什么要交给用户 (Escalate, don't decide)
+## 8. 什么要交给用户 (Escalating to the user)
 
 | 类型 | 例子 | 做法 |
 |---|---|---|

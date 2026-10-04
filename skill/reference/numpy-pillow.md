@@ -74,7 +74,7 @@ python scripts/render-np.py --project=my-mv-np --out=out/video.mp4 --workers=8  
 - 昂贵的基底（meshgrid、投影矩阵、字体对象）在**模块导入时**算一次，不要每帧重建。
 - `render_at` 的约定：同步、幂等、可乱序调用——联系表会跳着取帧，多进程会并行取帧；不幂等的代价是同 `t` 不同像素，跳帧处直接花屏。
 
-- Time comes only from `t`; randomness only from `env.rnd(seed)`; precompute grids/matrices/fonts at import time; `render_at` must be synchronous, idempotent and safe to call out of order.
+- Time comes only from `t`; randomness only from `env.rnd(seed)`; precompute grids/matrices/fonts at import time; `render_at` is expected to be synchronous, idempotent and safe to call out of order — the contact sheet samples frames out of order and workers render in parallel, so anything else shows up as smeared frames.
 
 ## 逐帧渲染 (Frame-by-frame rendering)
 
@@ -100,7 +100,7 @@ At startup the engine hashes `project.json` + `src/render.py` into `frames/.sign
 
 project.json 的 `fx` 块（与 Chrome 引擎同构）由引擎在 `render_at` 返回之后**统一施加**，全部 NumPy 向量化：`bloom`（亮度阈值提亮 + 两次 3×3 盒式模糊，加法混合）→ `chroma`（R/B 通道反向平移后按 `chromaAlpha` 混合）→ `scanlines`（每 `scanGap` 行乘性压暗 `scanAlpha`）→ `vignette`（径向渐晕，边缘最深 35%）→ `grain`（按 frame 播种的高斯颗粒，`grainAlpha` 控制幅度）。顺序固定；场景代码**不再自己做后期**；`fx` 缺省/为空对象则整条通道跳过。脚手架默认开 `bloom + vignette + grain`，与模板舞台配套。
 
-The `fx` block is applied after `render_at` in a fixed chain — bloom, chroma, scanlines, vignette, seeded grain — all vectorised NumPy. Scenes never implement post themselves; an empty `fx` skips the chain. The scaffold enables bloom + vignette + grain by default.
+The `fx` block is applied after `render_at` in a fixed chain — bloom, chroma, scanlines, vignette, seeded grain — all vectorised NumPy. Scenes leave post to the chain; an empty `fx` skips it. The scaffold enables bloom + vignette + grain by default.
 
 ## 流式输出 · hi-res · HDR (Streaming, hi-res and HDR)
 
@@ -173,7 +173,7 @@ blur = (np.roll(img, 1, 0) + np.roll(img, -1, 0) +
 - 高频图案（密栅格、像素排序、1→4096 的进程树）会**混叠**：降频、或先把帧缩小再 `Image.resize(LANCZOS)` 放大回去（廉价的低通）。
 - 需要 Pillow 的便利（`ImageDraw`、字体）时，把数组转 `Image` 画完再 `np.asarray` 转回来；这条边界只在每帧 1–2 次。
 
-- Fields (sine, interference, grids, moiré) are one vectorised expression over the whole frame; never loop per pixel in Python. Downscale-then-LANCZOS-upscale is a cheap low-pass against aliasing.
+- Fields (sine, interference, grids, moiré) are one vectorised expression over the whole frame; per-pixel Python loops are the slow path. Downscale-then-LANCZOS-upscale is a cheap low-pass against aliasing.
 
 ## Pillow 落字与收尾 (Type and finishing with Pillow)
 
@@ -187,7 +187,7 @@ box = d.textbbox((0, 0), line, font=font)                         # 量宽：(x0
 - 图层用 `RGBA` + `Image.alpha_composite`，最后 `convert("RGB")`——**返回值 = RGB、恰好 `width×height`**（不是的话引擎当场 `die`：尺寸不符成片零产出）。
 - 字体按 `ImageFont.truetype` 的候选表逐个试，全部失败才 `ImageFont.load_default()`（默认字体很小，只够调试）。
 
-- Pillow's `line/ellipse/polygon` are **not** antialiased: use NumPy SDFs, or draw at 2× and downscale with LANCZOS. Text *is* antialiased. Always return RGB at exactly `width×height`.
+- Pillow's `line/ellipse/polygon` are **not** antialiased: use NumPy SDFs, or draw at 2× and downscale with LANCZOS. Text *is* antialiased. Return RGB at exactly `width×height` (anything else exits with a size/mode error).
 
 ## 3D 透视投影 (3D perspective projection)
 
@@ -265,4 +265,4 @@ Cut the film into color chapters in `project.json`. A palette holds *inside* a s
 - **高频纹理闪烁** —— 逐帧的像素级噪点要看联系表；随机种子绑 `frame` 才能复现。
 - **看都不看就交付** —— 联系表照旧，规矩不变。
 
-- `uint8` wraparound, non-antialiased shapes, rebuilding grids/fonts per frame, global `np.random` state, wrong return mode/size, high-frequency shimmer — all caught by the contact sheet. The rules never change.
+- `uint8` wraparound, non-antialiased shapes, rebuilding grids/fonts per frame, global `np.random` state, wrong return mode/size, high-frequency shimmer — all caught by the contact sheet. The rules hold across projects.

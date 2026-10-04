@@ -31,7 +31,7 @@
 5. **联系表是迭代的最小单位。** 便宜到每次改完都能跑一遍。
 
 1. **Storyboard before code.** Agents that storyboard produce coherent films; agents that start coding produce loops.
-2. **Self-review by rendering.** Contact sheets, frame strips, stills — the agent must *look*.
+2. **Self-review by rendering.** Contact sheets, frame strips, stills — the agent *looks* at them before shipping; an unseen frame carries its problems to the final cut.
 3. **Deterministic virtual time.** `renderAt(t)` beats a rAF loop for resumability and quality.
 4. **No external assets.** Everything drawn from primitives, so there is nothing to fetch, license or lose.
 5. **Contact sheet as the unit of iteration.** Cheap enough to run after every change.
@@ -40,4 +40,4 @@
 
 软件渲染的 WebGL 很慢；厚重的水彩／笔触模拟可能每帧要花好几秒。音频通常是短板——用 Web Audio 的 `OfflineAudioContext` 做代码生成音乐是可能的，但一首真正有授权的曲子几乎总是更好。而且这种观感是*图形化*的：这条流水线在排版、几何、数据和光上面非常强，但并不适合写实的人。
 
-Software-rendered WebGL is slow; heavy watercolour/brush simulation can take seconds per frame. Audio is the usual weak point — code-generated music is possible with Web Audio's `OfflineAudioContext` but a real licensed track is almost always better. And the look is *graphic*: this pipeline is superb at typography, geometry, data and light; it is a poor fit for photoreal humans.
+Software-rendered WebGL is slow; heavy watercolour/brush simulation can take seconds per frame. Audio is the usual weak point — code-generated music is possible with Web Audio's `OfflineAudioContext` but a real licensed track is usually better. And the look is *graphic*: this pipeline is superb at typography, geometry, data and light; it is a poor fit for photoreal humans.

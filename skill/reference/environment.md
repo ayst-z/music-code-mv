@@ -66,7 +66,7 @@ The real search order: `CHROME_PATH`/`CHROME_BIN` first, then Program Files / Lo
 - **Linux / CI：** Chrome 的沙箱通常不可用；`--no-sandbox` 已经替你加了。完全没有 GPU 时，保留 `--enable-unsafe-swiftshader`。
 - **GPU：** 真 GPU 能让 WebGL 快约 10×。只有当 GPU 路径返回黑帧时才强制走软件渲染。
 
-- **Windows:** never call `pnpm`/ffmpeg by bare name if they are not on `PATH`; use absolute paths. A PowerShell command whose stderr is non-empty reports a non-zero exit even when the underlying command succeeded — check stdout for the real result.
+- **Windows:** calling `pnpm`/ffmpeg by bare name fails when they are not on `PATH` — absolute paths work regardless. A PowerShell command whose stderr is non-empty reports a non-zero exit even when the underlying command succeeded — check stdout for the real result.
 - **Linux / CI:** Chrome's sandbox is often unavailable; `--no-sandbox` is already passed. With no GPU at all, keep `--enable-unsafe-swiftshader`.
 - **GPU:** a real GPU makes WebGL ~10× faster. Only force software when the GPU path returns a black frame.
 

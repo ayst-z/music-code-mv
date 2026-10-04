@@ -62,7 +62,7 @@ Default now is **3D, and luxurious**: the question flipped from "does this shot 
 
 The static server in `render.mjs` serves the project root, so `/node_modules/` resolves. Projects scaffolded by `init.mjs` symlink (or copy) the dependency folder next to the project.
 
-## 必需的渲染器设置 (Required renderer settings)
+## 建议的渲染器设置 (Recommended renderer settings)
 
 ```js
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
@@ -103,10 +103,10 @@ WebGL 和文字在同一个 canvas 里不好合成。两个选择：
 - **在 DOM 里分层：** 一个 `<canvas>` 放 WebGL，另一个绝对定位的 `<canvas>`（或 DOM 文字）放排版，两者都在同一个 `renderAt(t)` 里更新。做歌词 MV 通常这才是正确答案，而且文字依然锐利。
 - **把文字渲染进纹理** —— 文字真要被 3D 场景扭曲时才值得这么做（否则白付一次纹理成本，DOM 分层还更锐）。
 
-WebGL and text do not compose well in one canvas. Two options:
+WebGL and text compose poorly in one canvas. Two options:
 
 - **Layer them in the DOM:** a `<canvas>` for WebGL and an absolutely-positioned `<canvas>` (or DOM text) for type, both updated inside the same `renderAt(t)`. This is usually the right answer for a lyric MV, and it keeps text crisp.
-- **Render type into a texture** — only when the type must be distorted by the 3D scene.
+- **Render type into a texture** — the option worth reaching for when the type is distorted by the 3D scene.
 
 ## 预设 → Three.js 镜头逻辑 (Preset → Three.js shot logic)
 
@@ -126,7 +126,7 @@ Every preset carries a `three` block. `init.mjs` copies it into `project.json` a
 
 `roles` 把**六角色调色板接到 three.js 的材质槽**上——场景里永远按角色取色，于是换预设等于换整套 3D 语言，一行材质代码都不用改：
 
-`roles` wires the **six-role palette into three.js material slots** — scenes always colour by role, so swapping presets swaps the whole 3D language without touching a material:
+`roles` wires the **six-role palette into three.js material slots** — scenes colour by role, so swapping presets swaps the whole 3D language without touching a material:
 
 ```js
 const R = (env.project.three || {}).roles || {};
