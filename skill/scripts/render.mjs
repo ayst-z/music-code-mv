@@ -67,18 +67,32 @@ if (!fs.existsSync(projectDir)) { console.error('project dir not found: ' + proj
 const loadJson = (p) => { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return null; } };
 const proj = loadJson(path.join(projectDir, 'project.json')) || {};
 
-const W = Number(opt.w || proj.width || 1280);
-const H = Number(opt.h || proj.height || 720);
-const FPS = Number(opt.fps || proj.fps || 30);
-const DUR = Number(opt.dur || proj.duration || 10);
+// 数值旗标统一校验：坏值在入口就死，别让它带着 NaN 走进 puppeteer 的深栈，
+// 也别让 --dur=abc 渲出 0 帧还继续编码（CODE-REVIEW P2-R8）
+const numFlag = (raw, flag, dflt, min, max) => {
+  if (raw === undefined || raw === null || raw === '') return dflt;
+  const n = Number(raw);
+  const bad = !Number.isFinite(n) || n < min || (max !== undefined && n > max);
+  if (bad) {
+    console.error('--' + flag + ' expects a finite number in [' + min +
+      (max !== undefined ? ', ' + max : '+') + '], got "' + raw + '"');
+    process.exit(2);
+  }
+  return n;
+};
+
+const W = numFlag(opt.w, 'w', Number(proj.width || 1280), 16, 16384);
+const H = numFlag(opt.h, 'h', Number(proj.height || 720), 16, 16384);
+const FPS = numFlag(opt.fps, 'fps', Number(proj.fps || 30), 1, 480);
+const DUR = numFlag(opt.dur, 'dur', Number(proj.duration || 10), 0.01, 86400);
 const TOTAL = Math.max(1, Math.round(DUR * FPS));
 const OUT = path.resolve(projectDir, String(opt.out || 'out/video.mp4'));
 const FRAMES = path.join(projectDir, 'frames');
 const CACHE = path.join(projectDir, '.cache');
 const SIGFILE = path.join(CACHE, 'signatures.json');
-const KEYS = Number(opt.keys || 12);
-const COLS = Number(opt.cols || 4);
-const KEYW = Number(opt.keyw || 320);
+const KEYS = numFlag(opt.keys, 'keys', 12, 1, 4096);
+const COLS = numFlag(opt.cols, 'cols', 4, 1, 64);
+const KEYW = numFlag(opt.keyw, 'keyw', 320, 16, 4096);
 // Default jpeg: PNG frame encoding dominated the per-frame cost (measured 6.7fps
 // vs 25.3fps at 4K60x8 workers). Pass --format=png when lossless stills matter.
 const FMT = /^(png)$/i.test(String(opt.format || '')) ? 'png' : 'jpeg';
@@ -182,6 +196,15 @@ function loadPuppeteer(fromDir) {
 }
 
 const CHROME = opt.chrome || findChrome();
+// --chrome 手滑写错时给明确提示，别让 ENOENT 埋在 puppeteer.launch 的深栈里（P2-R9）
+if (opt.chrome && !fs.existsSync(String(CHROME))) {
+  console.error('--chrome path not found: ' + CHROME);
+  process.exit(3);
+}
+if (!CHROME) {
+  console.error('no Chrome found — pass --chrome=<path> or install Chrome/Edge');
+  process.exit(3);
+}
 const FFMPEG = findFfmpeg();
 const NODE_MODULES = findNodeModules(projectDir);
 
@@ -285,7 +308,8 @@ async function encode() {
   // ffmpeg never creates directories: a fresh scaffold has no out/, and a custom
   // --out=sub/video.mp4 would otherwise fail only AFTER the whole render
   fs.mkdirSync(path.dirname(OUT), { recursive: true });
-  await runFfmpeg(FFMPEG, args);
+  // 编码进度条：帧数已知（含 HDR 写入阶段，x265 4K120 要十几分钟，不能静默）
+  await runFfmpeg(FFMPEG, args, { totalFrames: Math.max(1, end - start), label: 'encode' });
 
   const size = fs.statSync(OUT).size;
   let probe = '';
@@ -302,9 +326,6 @@ async function encode() {
 
 // ---------------------------------------------------------------- worker
 async function runWorker() {
-  // Two engines, one set of render modes below:
-  //   node   — browserless skia renderer (self-written fast path)
-  //   chrome — classic headless-Chrome screenshot path
   let server = null;
   let browser = null;
   let page = null;
@@ -312,12 +333,26 @@ async function runWorker() {
   let exitCode = 0;
   let shoot = null;
   let scenesFn = null;
+  // 被 SIGINT/SIGTERM 掐掉时先关自己的 Chrome/skia/服务器：直接死会让
+  // headless Chrome 变成孤儿进程继续烧 CPU（CODE-REVIEW P2-R4）
+  const tearDown = async () => {
+    try { if (browser) await browser.close(); } catch { /* ignore */ }
+    try { if (renderer) await renderer.close(); } catch { /* ignore */ }
+    if (server) { try { server.close(); } catch { /* ignore */ } }
+    process.exit(130);
+  };
+  process.on('SIGINT', tearDown);
+  process.on('SIGTERM', tearDown);
   // chrome-branch handles (the chrome block inside try{} references them)
   let requestedGl = String(opt.gl || 'auto');
   let glMode = requestedGl === 'soft' ? 'soft' : 'gpu';
   let launch = null;
   let URL = null;
 
+  // 启动阶段（puppeteer 加载 / 静态服务器 / Chrome launch）必须在同一个 try 里：
+  // 否则它们的 rejection 落在 try 外 → unhandled rejection 崩溃，打印不出
+  // [render] FAILED，http server 也只能随进程退出回收（CODE-REVIEW P2-R3）
+  try {
   if (ENGINE === 'node') {
     const { createNodeRenderer } = await import(pathToFileURL(path.join(HERE, 'lib', 'skia-engine.mjs')).href);
     renderer = await createNodeRenderer({
@@ -346,7 +381,6 @@ async function runWorker() {
     browser = await launch(glMode);
   }
 
-  try {
     if (ENGINE === 'chrome') {
     const newPage = async () => {
       const p = await browser.newPage();
@@ -509,7 +543,9 @@ async function runWorker() {
 
     // scene metadata drives the incremental signature
     const scenes = await scenesFn();
-    const sig = scenes ? createSignature(projectDir, { width: W, height: H, fps: FPS, duration: DUR, engine: ENGINE, quality: QUALITY }) : null;
+    // base 里现在含 index.html/lyrics/quality/engine（见 signature.mjs）——**刻意的语义修正**：
+    // 存量缓存会整体重渲一次，换来"改画质/改 HTML/注入歌词必然失效"
+    const sig = createSignature(projectDir, { width: W, height: H, fps: FPS, duration: DUR, engine: ENGINE, quality: QUALITY });
     const sigStore = opt.force ? {} : loadSignatures(SIGFILE);
 
     const start = Math.max(0, Number(opt.start || 0));
@@ -524,13 +560,17 @@ async function runWorker() {
     const serialBar = IS_WORKER ? null : createProgress({ total: mine.length, label: 'render' });
     for (const f of mine) {
       const file = framePath(f);
-      let frameSig = null;
-      if (sig && scenes) {
+      // 没有 timeline 元数据的工程过去是 frameSig=null → 文件存在就盲复用（改尺寸/改 src
+      // 都不重渲）。现在退回"base + 整棵 src 树"的全局签名（P2-R6）。
+      let frameSig;
+      if (scenes) {
         const live = scenes.filter(s => f / FPS >= s.start && f / FPS < s.end);
         frameSig = sig.forFrame(live.map(s => ({ id: s.id, deps: s.deps })));
+      } else {
+        frameSig = sig.forGlobal();
       }
       const exists = fs.existsSync(file);
-      const cached = exists && (!frameSig || sigStore[String(f)] === frameSig);
+      const cached = exists && (frameSig ? sigStore[String(f)] === frameSig : true);
       if (cached) {
         reused++;
       } else {
@@ -607,8 +647,14 @@ async function runSupervisor() {
       cwd: process.cwd(), windowsHide: true,
       env: { ...process.env }
     });
+    // ##PROGRESS / ##STATS 可能被 pipe 边界截成半行：必须留残行缓冲，否则统计丢失
+    // （末尾汇总显示 "0 rendered, 0 reused"，渲染本身却正常）—— CODE-REVIEW P2-R5
+    let pending = '';
     child.stdout.on('data', (buf) => {
-      for (const line of buf.toString().split('\n')) {
+      pending += buf.toString();
+      const lines = pending.split('\n');
+      pending = lines.pop();
+      for (const line of lines) {
         const p = parseProgressLine(line);
         if (p) { done[i] = p.done; totals[i] = p.total; progress.update(done.reduce((a, b) => a + b, 0)); continue; }
         const st = /^##STATS (\d+) (\d+)$/.exec(line.trim());
@@ -617,8 +663,22 @@ async function runSupervisor() {
       }
     });
     child.stderr.on('data', (b) => { const s = b.toString().trim(); if (s) console.error('[w' + i + '] ' + s); });
+    // spawn 失败（极端：node 路径失效）不能让 'close' 永不触发 → 汇总 Promise 挂死（P2-R4）
+    child.on('error', (e) => {
+      console.error('[w' + i + '] spawn failed: ' + (e && e.message));
+      stats[i] = { rendered: 0, reused: 0, failed: true };
+    });
     return child;
   };
+
+  // Ctrl+C / 任务被杀时**带走 worker**：只死父进程会留下 n 个 node + 各自的 Chrome
+  // 子树继续烧 CPU（CODE-REVIEW P2-R4）
+  const stopAll = () => {
+    for (const c of children) { try { c.kill(); } catch { /* already gone */ } }
+    process.exit(130);
+  };
+  process.on('SIGINT', stopAll);
+  process.on('SIGTERM', stopAll);
 
   for (let i = 0; i < n; i++) children.push(spawnWorker(i));
 

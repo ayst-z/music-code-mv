@@ -94,11 +94,24 @@ export function scanSceneModules(projectDir) {
   return map;
 }
 
-export function createSignature(projectDir, { width, height, fps, duration }) {
+export function createSignature(projectDir, { width, height, fps, duration, engine = '', quality = '' }) {
   let globalSrc = 'none';
   try { globalSrc = treeHash(path.join(projectDir, 'src')); } catch { /* ignore */ }
   const projectJson = fileHash(path.join(projectDir, 'project.json'));
-  const base = [width, height, fps, duration, projectJson].join('|');
+  // base 覆盖一切能改像素的东西：
+  //  · quality / engine：不同画质或引擎产出不同像素（P2-R7，此前只截屏用 quality，签名里没有）
+  //  · index.html：引外部 CSS/字体时改它必须重渲（P2-R7）
+  //  · lyrics 指向的文件：注入新歌词后必须失效——否则插件主打的 lyrics+增量渲染交叉缺陷
+  //    让成片永远是旧歌词（CODE-REVIEW P1-R1，语义修正：存量缓存会整体重渲一次）
+  const indexHtml = fileHash(path.join(projectDir, 'index.html'));
+  let lyricsFile = 'none';
+  try {
+    const proj = JSON.parse(fs.readFileSync(path.join(projectDir, 'project.json'), 'utf8'));
+    if (proj && typeof proj.lyrics === 'string' && proj.lyrics) {
+      lyricsFile = fileHash(path.resolve(projectDir, proj.lyrics));
+    }
+  } catch { /* project.json 坏了：projectJson 哈希已经反映出来 */ }
+  const base = [width, height, fps, duration, projectJson, indexHtml, lyricsFile, engine, quality].join('|');
   const sceneCache = new Map();
   const scanned = scanSceneModules(projectDir);
 
@@ -124,6 +137,14 @@ export function createSignature(projectDir, { width, height, fps, duration }) {
     forFrame(scenes) {
       const ids = scenes.map(s => s.id + '#' + sceneSig(s)).sort().join('+');
       return crypto.createHash('sha1').update(base + '|' + ids).digest('hex').slice(0, 16);
+    },
+    /**
+     * 没有 timeline 元数据的工程用这个：base + 整棵 src 树。
+     * 此前这类工程 sig=null → 只要帧文件存在就复用，改尺寸/改 src 全都不重渲
+     * （CODE-REVIEW P2-R6）。
+     */
+    forGlobal() {
+      return crypto.createHash('sha1').update(base + '|global:' + globalSrc).digest('hex').slice(0, 16);
     },
     globalSrc,
     projectJson

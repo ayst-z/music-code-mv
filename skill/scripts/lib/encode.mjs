@@ -1,6 +1,7 @@
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import path from 'node:path';
+import { createProgress } from './progress.mjs';
 
 const execFileAsync = promisify(execFile);
 
@@ -176,15 +177,67 @@ export function buildEncodeArgs(opts) {
   return args;
 }
 
-export async function runFfmpeg(ffmpeg, args) {
-  try {
-    return await execFileAsync(ffmpeg, args, { maxBuffer: 1 << 26 });
-  } catch (e) {
-    const msg = ((e && e.stderr) || (e && e.message) || '').toString();
-    if (/ENOENT/.test(msg)) {
-      throw new Error('ffmpeg not found (tried --ffmpeg, FFMPEG_PATH, node_modules/ffmpeg-static, ' +
-        'node_modules/@ffmpeg-installer, then PATH). Install with: npm install ffmpeg-static');
-    }
-    throw new Error('ffmpeg failed: ' + msg.split('\n').slice(-8).join('\n'));
+/**
+ * 跑 ffmpeg。传 `totalFrames` 就给出**进度条**（`-progress pipe:1` 解析 `frame=`）——
+ * 4K120 的 x265 main12 编码要 15–20 分钟，全程静默是不可接受的；
+ * 不传则退回原来的静默模式（联系表拼图这类秒级任务用）。
+ * HDR 写入就发生在这一步，所以进度条天然覆盖 HDR 输出。
+ */
+export function runFfmpeg(ffmpeg, args, opts = {}) {
+  const total = Number(opts.totalFrames || 0);
+  const label = opts.label || 'encode';
+  if (!(total > 0)) {
+    return (async () => {
+      try {
+        return await execFileAsync(ffmpeg, args, { maxBuffer: 1 << 26 });
+      } catch (e) {
+        const msg = ((e && e.stderr) || (e && e.message) || '').toString();
+        if (/ENOENT/.test(msg)) throw notFound();
+        throw new Error('ffmpeg failed: ' + msg.split('\n').slice(-8).join('\n'));
+      }
+    })();
   }
+
+  return new Promise((resolve, reject) => {
+    const argv = args.concat(['-progress', 'pipe:1', '-nostats']);
+    const child = spawn(ffmpeg, argv, { stdio: ['ignore', 'pipe', 'pipe'] });
+    const bar = createProgress({ total, label });
+    let outBuf = '';
+    let errTail = [];
+    child.stdout.setEncoding('utf8');
+    child.stdout.on('data', (chunk) => {
+      outBuf += chunk;
+      const lines = outBuf.split('\n');
+      outBuf = lines.pop();
+      for (const ln of lines) {
+        const m = /^frame=(\d+)/.exec(ln.trim());
+        if (m) {
+          const n = Math.min(total, Number(m[1]));
+          bar.update(n, { note: label });
+        } else if (ln.indexOf('progress=end') >= 0) {
+          bar.update(total, { note: label });
+        }
+      }
+    });
+    child.stderr.setEncoding('utf8');
+    child.stderr.on('data', (d) => { errTail.push(d); if (errTail.length > 60) errTail.shift(); });
+    child.on('error', (e) => {
+      bar.done();
+      if (/ENOENT/.test(String(e && e.message))) reject(notFound());
+      else reject(new Error('ffmpeg failed: ' + (e && e.message)));
+    });
+    child.on('close', (code) => {
+      if (code === 0) { bar.done(); resolve({ code: 0 }); }
+      else {
+        bar.done();
+        const tail = errTail.join('').split('\n').slice(-8).join('\n');
+        reject(new Error('ffmpeg failed (exit ' + code + '):\n' + tail));
+      }
+    });
+  });
+}
+
+function notFound() {
+  return new Error('ffmpeg not found (tried --ffmpeg, FFMPEG_PATH, node_modules/ffmpeg-static, ' +
+    'node_modules/@ffmpeg-installer, then PATH). Install with: npm install ffmpeg-static');
 }
