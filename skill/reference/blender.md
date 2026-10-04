@@ -44,7 +44,7 @@ blender -b scene.blend -o //frames/f##### -F PNG -s 0 -e 11 -a
 
 ## 确定性约束 (Determinism — the skill 的铁律)
 
-1. **帧是 t 的纯函数**：python 路线里只允许 `t = frame / fps` 驱动一切（位置、旋转、相机、材质动画）；禁止墙钟、禁止未播种随机、禁止"上一帧的状态"。
+1. **帧是 t 的纯函数**：python 路线里用 `t = frame / fps` 驱动一切（位置、旋转、相机、材质动画）；墙钟、未播种随机、"上一帧的状态"都会让同一个 `t` 两次渲出不同像素——帧缓存、断点续渲与并行都建立在这一点上。
 2. **干净场景起步**：脚本开头 `bpy.ops.wm.read_factory_settings(use_empty=True)`，保证任何人重跑得到同一场景。
 3. **一次调用渲整段**：Blender 启动贵，连续段合并成一次进程；处理器用 `frame_change_post` 挂钩（`def tick(*args)` 兼容 4.x/5.x 签名差异）。
 4. **版本一致性**：同一 Blender 大版本 + 同一场景文件 → 同一像素；跨大版本（4.0→5.0）色彩管理/渲染器输出可能变化，**升级后用 `--force` 重渲一次**再比较。

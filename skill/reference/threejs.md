@@ -2,7 +2,7 @@
 
 ## 3D 优先策略 (3D priority ladder)
 
-**默认往 3D 画，场面要豪华。** 判断标准已经翻转：不再是「这一镜有没有理由升级到 3D」，而是「**这一镜有什么理由不用 3D**」。纯排版、纯数据、色卡巡游这类镜头才留在 2D——因为那里 3D 只会把字压花；其余一律上 3D。
+**默认往 3D 画，场面要豪华。** 判断标准已经翻转：不再是「这一镜有没有理由升级到 3D」，而是「**这一镜有什么理由不用 3D**」。纯排版、纯数据、色卡巡游这类镜头留在 2D 通常更合适——那里 3D 只会把字压花；其余默认上 3D。
 
 从高往低退，每退一级都要说出理由（写下它，写不出就别退）：
 
@@ -79,7 +79,7 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 
 `EffectComposer` + `RenderPass` + `UnrealBloomPass` 能便宜地拿到那种发光观感。再加一个最终的 `ShaderPass` 做扫描线、色差、暗角和颗粒——正是这一个 pass，让 WebGL 渲染读起来像是*被设计过的*，而不是 three.js 的默认 demo。
 
-bloom 的 `strength` 保持在 1.0 附近、`threshold` 高于 0.1；软件渲染非常容易把高光打爆，而一张 bloom 过头的帧会丢掉全部结构。
+bloom 的 `strength` 落在 1.0 附近、`threshold` 高于 0.1；软件渲染非常容易把高光打爆，而一张 bloom 过头的帧会丢掉全部结构。
 
 ```js
 window.renderAt = (t) => {
@@ -100,8 +100,8 @@ Keep bloom `strength` near 1.0 and `threshold` above 0.1; software rendering blo
 
 WebGL 和文字在同一个 canvas 里不好合成。两个选择：
 
-- **在 DOM 里分层：** 一个 `<canvas>` 放 WebGL，另一个绝对定位的 `<canvas>`（或 DOM 文字）放排版，两者都在同一个 `renderAt(t)` 里更新。做歌词 MV 通常这才是正确答案，而且文字保持锐利。
-- **把文字渲染进纹理** —— 只有当文字必须被 3D 场景扭曲时才这么做。
+- **在 DOM 里分层：** 一个 `<canvas>` 放 WebGL，另一个绝对定位的 `<canvas>`（或 DOM 文字）放排版，两者都在同一个 `renderAt(t)` 里更新。做歌词 MV 通常这才是正确答案，而且文字依然锐利。
+- **把文字渲染进纹理** —— 文字真要被 3D 场景扭曲时才值得这么做（否则白付一次纹理成本，DOM 分层还更锐）。
 
 WebGL and text do not compose well in one canvas. Two options:
 
@@ -162,6 +162,6 @@ bloomPass.strength  = three.post?.bloom ?? 1.0;     // 后期跟预设走
 
 ## 成本 (Cost)
 
-3D 是默认之后，成本不再是「做不做」的理由，而是**排期问题**：SwiftShader 下 WebGL 后期链 960×540 约 150–400 ms/帧，Canvas2D 手写 10–40 ms——所以草稿阶段一律 `--contact --w=480 --h=270`，交付 4K 只跑一遍并用 `--workers=8~12`（实测 9120 帧 4K120 全 FX：10 workers 367s，约 26 fps）。纯排版镜头用各自的 `fx` 关掉 bloom/色差，把预算留给主 3D 镜头。
+3D 是默认之后，成本不再是「做不做」的理由，而是**排期问题**：SwiftShader 下 WebGL 后期链 960×540 约 150–400 ms/帧，Canvas2D 手写 10–40 ms——所以草稿阶段用 `--contact --w=480 --h=270` 最划算，交付 4K 只跑一遍并用 `--workers=8~12`（实测 9120 帧 4K120 全 FX：10 workers 367s，约 26 fps）。纯排版镜头用各自的 `fx` 关掉 bloom/色差，把预算留给主 3D 镜头。
 
 Now that 3D is the default, cost is a scheduling question rather than a blocker: expect ~150–400 ms/frame for a full WebGL post chain at 960×540 under SwiftShader versus 10–40 ms for Canvas2D. Iterate at draft resolution, run the 4K delivery pass once with `--workers=8~12`, and turn bloom/chroma off on typography shots so the budget goes to the hero 3D shots.

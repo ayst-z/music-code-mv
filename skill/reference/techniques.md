@@ -2,9 +2,9 @@
 
 ## 页面契约 (The page contract)
 
-宿主页面必须恰好向渲染器暴露下面这些东西：
+渲染器从宿主页面读取的是下面这些（缺哪一项就报哪一项的缺）：
 
-The host page must expose exactly this to the renderer:
+The host page exposes exactly this to the renderer (each missing item is reported by name):
 
 ```js
 window.__MV__ = { width, height, fps, duration };
@@ -13,17 +13,17 @@ window.__ready = true;               // set after the first successful draw
 window.MV.shotAt = (t) => 'verse-1'; // optional: label frames in contact sheets
 ```
 
-`renderAt` 必须**同步且幂等**：同一个 `t` → 同样的像素，永远如此，顺序也无所谓。渲染器可能乱序调用它，也可能调用两次。
+`renderAt` 的约定是**同步且幂等**：同一个 `t` → 同样的像素，与顺序无关。渲染器可能乱序调用它，也可能调用两次——不幂等的话同一帧两次渲出会不一样，联系表的跳帧取样就花了。
 
-`renderAt` must be **synchronous and idempotent**: same `t` → same pixels, always, in any order. The renderer may call it out of order or twice.
+`renderAt` is expected to be **synchronous and idempotent**: same `t` → same pixels, in any order. The renderer may call it out of order or twice; without idempotence the same frame renders differently between calls and the contact sheet's sampled frames smear.
 
 ## 局部时间与全局时间 (Local time vs global time)
 
-场景的 `draw` 拿到的是**它自己的局部时间**（在镜头 `start` 处为 0），所以一个镜头可以被挪位置而不用重写它。任何跨越镜头的东西——歌词、节拍网格、反复出现的动机——都必须读 `env.t`，也就是时间轴在每个场景绘制之前设定的全局时间轴时间。
+场景的 `draw` 拿到的是**它自己的局部时间**（在镜头 `start` 处为 0），所以一个镜头可以被挪位置而不用重写它。任何跨越镜头的东西——歌词、节拍网格、反复出现的动机——`env.t` 是稳妥的选择，也就是时间轴在每个场景绘制之前设定的全局时间轴时间。
 
 搞错了也不会报错：场景照常渲染、照常画背景，只是永远找不到对应的歌词行，于是这个镜头看起来就像一张空背景。如果一个文字镜头什么都没渲染出来，先查这里。
 
-A scene's `draw` receives **its own local time** (0 at the shot's `start`), so a shot can be moved without rewriting it. Anything that spans shots — lyrics, beat grid, a recurring motif — must read `env.t`, the global timeline time the timeline sets before each scene draws.
+A scene's `draw` receives **its own local time** (0 at the shot's `start`), so a shot can be moved without rewriting it. Anything that spans shots — lyrics, beat grid, a recurring motif — `env.t` is the safe choice: the global timeline time the timeline sets before each scene draws.
 
 Getting this wrong is silent: the scene renders, draws its background, and simply never finds a lyric line, so the shot looks like an empty background. If a text shot renders nothing, check this first.
 
@@ -119,7 +119,7 @@ ffmpeg -y -framerate <fps> -start_number <first-frame> -i frames/f%05d.jpg \
 
 - **画 / render**：`--gl=auto`（默认）先按硬件参数起 Chrome（`--use-gl=angle --use-angle=d3d11 --ignore-gpu-blocklist --enable-gpu-rasterization --enable-zero-copy`），渲 t=0 一帧做空帧体检，**检出空帧就自动回退软渲并说明**；`--gl=gpu` 强制硬件（不做体检）、`--gl=soft` 强制 SwiftShader。Three.js/WebGL 镜头天然走 GPU。
 - **编 / encode**：`--encoder=auto`（默认）按 `qsv > nvenc > amf > x264` 挑，**每个候选都先真编一帧（256×144，几十毫秒）再上场**，全失败才回软件 x264。
-- **为什么必须真编一帧**：ffmpeg 静态构建经常把 `qsv`/`nvenc`/`amf` 一起编进去，但机器上未必有那块卡。只查 `-encoders` 会选中 `h264_nvenc`，然后在最后一步整体失败（`Cannot load nvcuda.dll`）。实测本机：三个 QSV 可用，`h264_nvenc` 报 `Cannot load nvcuda.dll`、`h264_amf` 报 `amfrt64.dll failed to open`。
+- **为什么要真编一帧**：ffmpeg 静态构建经常把 `qsv`/`nvenc`/`amf` 一起编进去，但机器上未必有那块卡。只查 `-encoders` 会选中 `h264_nvenc`，然后在最后一步整体失败（`Cannot load nvcuda.dll`）。实测本机：三个 QSV 可用，`h264_nvenc` 报 `Cannot load nvcuda.dll`、`h264_amf` 报 `amfrt64.dll failed to open`。
 - **探针尺寸别太小**：QSV 的 AV1/HEVC 在部分 Intel 卡上有最小分辨率，64×64 会报 `Current resolution is unsupported`——那是探针太小，不是编码器坏（256×144 才是安全值）。
 - 降级是**如实**的：日志会打 `[hardware verified — test frame encoded]`，或退回软件并列出哪些硬件编码器不可用及原因，绝不谎报「已用硬件加速」。
 - `render-np.py` 是纯 CPU（NumPy 向量化），不走 GPU；要 GPU 就换 Chrome 引擎的 Three.js/WebGL 镜头。
@@ -159,7 +159,7 @@ Reserve the full stack for shots that are about light and atmosphere; UI, diagra
 2. 渲染器——全屏 `ctx.filter = 'blur(...)'` 或 WebGL 后期链通常是瓶颈；换成便宜的缓存辉光。
 3. 逐像素循环——绝不要每帧 `getImageData`/`putImageData`；一次性预计算到离屏 canvas。
 4. 绘制调用——把粒子的 `fillRect` 批量起来；避免 `arc` 和逐粒子的 `save/restore`。
-5. Bloom——UnrealBloomPass 的 strength 保持在 1.0 附近；软件渲染器过曝很快。
+5. Bloom——UnrealBloomPass 的 `strength` 落在 1.0 附近最稳；软件渲染器过曝很快。
 
 Ordered by leverage:
 

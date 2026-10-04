@@ -27,7 +27,7 @@ my-mv/
   out/             # contact.png / video.mp4
 ```
 
-`src/render.py` 必须导出两个函数 / it must export two functions:
+`src/render.py` 导出两个函数（少一个，`loadRenderModule` 就点名报错退出） / it exports two functions:
 
 ```python
 def render_at(t, env):   # t = 全局虚拟秒 / global virtual seconds
@@ -69,10 +69,10 @@ python scripts/render-np.py --project=my-mv-np --out=out/video.mp4 --workers=8  
 
 ## 确定性 (Determinism)
 
-- 时间**只**来自 `t`；禁止 `time.time()`、禁止帧间可变的全局状态。
+- 时间**只**来自 `t`；`time.time()` 或帧间可变的全局状态会让同一 `t` 两次渲出不同像素，帧缓存与并行就失去意义。
 - 随机**只**来自 `env.rnd(seed)`，seed 用 `frame` 或镜头 id 派生——同一帧永远同一个生成器。
 - 昂贵的基底（meshgrid、投影矩阵、字体对象）在**模块导入时**算一次，不要每帧重建。
-- `render_at` 必须同步、幂等、可乱序调用（联系表会跳着取帧，多进程会并行取帧）。
+- `render_at` 的约定：同步、幂等、可乱序调用——联系表会跳着取帧，多进程会并行取帧；不幂等的代价是同 `t` 不同像素，跳帧处直接花屏。
 
 - Time comes only from `t`; randomness only from `env.rnd(seed)`; precompute grids/matrices/fonts at import time; `render_at` must be synchronous, idempotent and safe to call out of order.
 
@@ -127,9 +127,9 @@ python scripts/render-np.py ... --stream                                 # 强�
 
 **hi-res 支持**：`--w --h --fps --duration --format=png|jpeg` 全部可覆盖 `project.json`（4K120 就是 `--w=3840 --h=2160 --fps=120`）。**换档会自动强制重渲**：引擎在 `frames/.renderpass` 记一份「渲染档位指纹」（尺寸/帧率/时长/超采样/帧容器），与当前不符就拒绝复用旧帧——否则 CLI 覆盖会拿到上一档的缓存。hi-res 下帧容器用 `--format=jpeg`（quality 92、4:4:4）比 PNG 快约 3 倍；PNG 的 `pngLevel` 只影响写盘速度、不影响画质（PNG 恒无损）。
 
-**HDR10**：`--depth=10|12 --hdr10`。8 位 PNG 装不下 10 位，所以 **HDR 一律走流式**：`render_at` 出 uint8 → `v*257` 线性扩到 16 位 → `rgb48le` 管道 → ffmpeg 落 `yuv420p10le` + BT.2020/PQ 打标 + libx265（`-tag:v hvc1`）。实测输出：`hevc (Main 10) · yuv420p10le (bt2020nc/bt2020/smpte2084)`。
+**HDR10**：`--depth=10|12 --hdr10`。8 位 PNG 装不下 10 位，所以 **HDR 走流式**（缓存路径只能编 8-bit，引擎会自动开流式并打日志）：`render_at` 出 uint8 → `v*257` 线性扩到 16 位 → `rgb48le` 管道 → ffmpeg 落 `yuv420p10le` + BT.2020/PQ 打标 + libx265（`-tag:v hvc1`）。实测输出：`hevc (Main 10) · yuv420p10le (bt2020nc/bt2020/smpte2084)`。
 
-**HDR Vivid (T/UWA 005)**：`--hdr-vivid` 自动升到 10-bit + HDR10 基底，并在流式过程中**逐帧算动态元数据**（每 `sampleEvery=6` 帧采一段：`maxSCL`/`maxRGB`/`avg`/`avgLum`/`p99Lum`/`brightFrac`，附场景切换检测），写出 `<out>.hdrvivid.json`。**必须如实说明**：本机 ffmpeg（gyan essentials 6.1.1）**没有 CUVA/HDR-Vivid SEI 编码器**，所以交付形态是「合规 HDR10 基底 + Vivid 动态元数据 sidecar」，SEI 由下游支持 Vivid 的编码器合入。
+**HDR Vivid (T/UWA 005)**：`--hdr-vivid` 自动升到 10-bit + HDR10 基底，并在流式过程中**逐帧算动态元数据**（每 `sampleEvery=6` 帧采一段：`maxSCL`/`maxRGB`/`avg`/`avgLum`/`p99Lum`/`brightFrac`，附场景切换检测），写出 `<out>.hdrvivid.json`。**如实说明**：本机 ffmpeg（gyan essentials 6.1.1）**没有 CUVA/HDR-Vivid SEI 编码器**，所以交付形态是「合规 HDR10 基底 + Vivid 动态元数据 sidecar」，SEI 由下游支持 Vivid 的编码器合入。
 
 **性能预算 / performance budget**（640×360，本机实测，含机器争抢时的基线校准）：
 
@@ -184,7 +184,7 @@ box = d.textbbox((0, 0), line, font=font)                         # 量宽：(x0
 ```
 
 - **Pillow 的 `line/ellipse/polygon` 不抗锯齿**：要么走 NumPy SDF（推荐），要么整帧 2× 超采样画完再 `resize((w,h), LANCZOS)`。文字本身是抗锯齿的，不需要超采样。
-- 图层用 `RGBA` + `Image.alpha_composite`，最后 `convert("RGB")`——**返回值必须是 RGB、恰好 `width×height`**。
+- 图层用 `RGBA` + `Image.alpha_composite`，最后 `convert("RGB")`——**返回值 = RGB、恰好 `width×height`**（不是的话引擎当场 `die`：尺寸不符成片零产出）。
 - 字体按 `ImageFont.truetype` 的候选表逐个试，全部失败才 `ImageFont.load_default()`（默认字体很小，只够调试）。
 
 - Pillow's `line/ellipse/polygon` are **not** antialiased: use NumPy SDFs, or draw at 2× and downscale with LANCZOS. Text *is* antialiased. Always return RGB at exactly `width×height`.
