@@ -3,6 +3,12 @@
  *
  *   import { captionPages, pageAt, tokenIndexAt, wordsFromLine } from './captions.js';
  *
+ * **使用了 Remotion 库（MIT 许可，https://remotion.dev）字幕包的接口语义**：
+ * `Caption` 数据形状（text/startMs/endMs/timestampMs/confidence）、分页规则
+ * （combineTokensWithinMilliseconds 超时换页且断在带空格的词前、breakOnSilence
+ * 只比时间戳、页 durationMs 延到下页起点、页文本去前导空格而 token 保留）——
+ * 按其官方文档定义实现；本文件为自写纯函数版（无 npm 依赖）。
+ *
  * 数据形状（标准 caption 记录，段级或词级都用它）：
  *   { text, startMs, endMs, timestampMs, confidence }
  *   text 对空格敏感：**每个词前带空格**（分页靠空格断词），画布渲染要自己保留空格。

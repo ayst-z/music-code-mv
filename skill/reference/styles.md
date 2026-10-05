@@ -641,6 +641,8 @@ fn audit_rhythm(shots, bpm):
 
 ### 动画驱动语汇 (Motion drivers)
 
+> 本节驱动器的接口语义取自 **Remotion 库（MIT 许可，remotion.dev）**——`spring()` / `interpolate()` 的参数与行为按其官方文档实现，模板里是无依赖的纯函数版。
+
 模板 `src/anim.js` 提供两个纯函数驱动器（只吃 `t`，乱序/并行渲染结果一致）：
 
 ```js
@@ -713,6 +715,8 @@ Rhythm is measurable: cut on the beat (boundaries snapped to `60/BPM`, transitio
 Cinematic dark narrative: render at 2.39:1 natively (1920×804 and friends), hold average brightness around 22/255 with roughly seven in ten frames having over half their pixels below 16, and let a single amber light own all the warmth — concentrated into one 20–30 s climax while the rest stays cold. Keep cuts rare (scene change every 15–20 s, 1.5–3 s dissolves), use near-black title cards as narrative beats with bilingual type (28–40 px Chinese over 16–20 px English at 0.7 alpha), turn text into material (textured water/spheres/buildings), carry one small persistent motif across every shot — the film's sun — and anchor infinite-horizon compositions at 0.55–0.65 frame height with fov 35–50.
 
 ### 逐词排版 (Word-timed typography)
+
+> 数据形状与分页规则取自 **Remotion 字幕包（MIT 许可，remotion.dev）**的 `Caption` / TikTok 分页口径；模板实现为无依赖纯函数。
 
 台词级（LRC）之上再细一层，就是卡拉OK、打字机、逐词高亮这些效果的全部来源。模板 `src/captions.js`：
 

@@ -2,7 +2,12 @@
  * 动画驱动语汇 / motion drivers —— 帧 = t 的纯函数，所以这里每个函数只吃 t（或 frame），
  * 不维护任何跨帧状态：乱序渲染、断点续渲、多 worker 都得到同一结果。
  *
- *   import { interpolate, spring, SPRING } from './anim.js';
+ *   import { interpolate, spring, SPRING, Easing, scaleInterpolate, noise1D } from './anim.js';
+ *
+ * **使用了 Remotion 库（MIT 许可，https://remotion.dev）的接口语义**：`spring()` 的
+ * mass/damping/stiffness/overshootClamping/durationInFrames/delay 参数与操作顺序、
+ * `interpolate()` 的多段映射与 clamp 出界、感知缩放口径——均按其官方文档定义实现；
+ * 本文件是**自写的纯函数版**（无 npm 依赖、只吃 t），闭式阻尼谐振子解取代了它的数值积分。
  *
  * interpolate：多段线性映射（默认 clamp 出界，忘写 clamp 是最常见的越界 bug）
  *   const opacity = interpolate(ts, [0, 0.5], [0, 1]);                 // 入场 0.5s
