@@ -733,7 +733,23 @@ import { captionPages, pageAt, tokenIndexAt, wordsFromLine } from './captions.js
 
 Word-timed typography reduces to one data shape (`{text,startMs,endMs}` with a leading space per word) plus page grouping: `captionPages()` cuts a new page when the accumulated page duration exceeds `combineTokensWithinMilliseconds` (1200 ≈ whole line, 0 = word by word) or when a silence gap qualifies, and each page's `durationMs` runs until the next page so captions ride through pauses. `tokenIndexAt()` yields the karaoke highlight index; `wordsFromLine()` is a deterministic per-character/per-word estimate for segment-level timings, swappable for real alignment output later.
 
-### T28 · 聊天窗叙事 (Chat-window narrative)
+### 排版适配 (Typography fitting)
+
+> 字号/换行的计算口径取自 **Remotion 的 `fitText()`（MIT 许可，remotion.dev）**；模板实现为自写的 Canvas 版（`measureText` 对字号线性 → 一次测量即精确解，无需二分）。
+
+模板 `src/textfit.js`，三个函数都吃带 `measureText` 的 `ctx`（测试可注入 mock）：
+
+| 函数 | 用途 |
+|---|---|
+| `fitFont(ctx, text, withinWidth, {font, maxSize, minSize})` | 算出正好放进容器的字号；`maxSize`（标题别超过80）/`minSize`（可读下限）夹边界 |
+| `wrapLines(ctx, text, maxWidth, {font})` | 贪心换行：**CJK 逐字断、西文整词断**、显式 `\n` 必断；行首不留空格；超宽单词在空行上按字硬切兜底 |
+| `fitWrap(ctx, text, {withinWidth, maxLines, maxSize, minSize})` | 宽 + 行数双约束 → `{fontSize, lines}` 自洽返回（先按基准排版量最宽行、线性反推字号，行数超限按比例收缩重排一次） |
+
+`bumpFont('bold 48px Foo', 30)` → `'bold 30px Foo'`（换字号的工具）。**字体先加载再量**——与渲染同一样式测量是自洽的前提（fallback 字体会量出两套数字）。
+
+Typography fitting lives in `src/textfit.js`: `fitFont()` derives the exact font-size from one `measureText` call (measurement scales linearly with size), `wrapLines()` breaks CJK per character but keeps Latin words whole (with a per-character fallback for single over-long tokens), and `fitWrap()` returns a self-consistent `{fontSize, lines}` pair under both width and line-count constraints.
+
+
 
 **UI 即舞台**：聊天窗就是世界本身——
 
