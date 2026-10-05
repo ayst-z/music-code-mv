@@ -639,6 +639,28 @@ fn audit_rhythm(shots, bpm):
 
 **帧间差的落地口径**：渲 contact/stills 时顺手取相邻两帧算 `mean |Δ|`；**目标值 >0.5**（灰度均值差），任何一对相邻帧低于它就说明那里卡住了。与「不单调」互补：不单调看**3 秒窗内的轴变化**，连续动画看**每一对相邻帧**。
 
+### 动画驱动语汇 (Motion drivers)
+
+模板 `src/anim.js` 提供两个纯函数驱动器（只吃 `t`，乱序/并行渲染结果一致）：
+
+```js
+import { interpolate, spring, SPRING, Easing, scaleInterpolate } from './anim.js';
+```
+
+- **`interpolate(x, input[], output[], {clamp, easing})`** —— 多段映射，**出界默认 clamp**（忘写 clamp 的 scale 会飞出画面）；`Easing.outCubic/outBack` 给入场，`inQuad` 给出场。
+- **`spring(t, {fps, from, to, delay, durationInFrames, overshootClamping, config})`** —— 物理弹簧（阻尼谐振子**闭式解析解**，任意参数数值稳定）：
+
+| 预设 | 手感 | 用在哪 |
+|---|---|---|
+| `SPRING.bouncy`（默认 ζ=0.5） | 落位带 ~16% 回弹 | 卡片、徽章、粒子团落位 |
+| `SPRING.noBounce`（ζ=1 临界） | 不回弹且**收敛最快**（0.77s 到位） | 正文/大字入场（回弹让字抖） |
+| `SPRING.snappy` | 紧致快弹（k=220, m=0.6） | 按钮、小元素、UI 反馈 |
+| `SPRING.heavy` | 迟缓厚重（m=2.4, k=60） | 大块面板、镜头级运动 |
+
+**三条常用搭配**：① `durationInFrames` 把弹簧**拉伸到正好镜头那么长**——先写镜头秒数、再让入场贴合它，节奏天然对齐；② **错峰入场** = `delay: i × 0.06`（一排元素依次起跳）；③ `overshootClamping: true` 关掉过冲（大字标题用）。**弹簧当驱动器**：`interpolate(spring(...), [0,1], [a,b])` —— 位移、透明度、色相都能挂。scale 动画用 `scaleInterpolate`（**感知线性**：可见面积匀速变化，半程返回 √0.5，直接线性插值会先慢后快）。
+
+Physics springs and multi-point interpolation are the two workhorse drivers in `src/anim.js` — both pure functions of `t`. Pair `durationInFrames` with the shot length so entrances land on the cut, stagger with `delay: i×0.06`, and use `scaleInterpolate` for perceptual uniformity.
+
 ### 常见病与修法
 
 | 症状 | 病因 | 修法 |

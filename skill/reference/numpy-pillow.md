@@ -13,9 +13,9 @@ A second render engine: **every frame is a `float32` array computed vectorised i
 | 已有 Canvas2D 场景代码 | 想要**严格栅格 + 精确坐标**的排版，像素说了算 |
 | — | 无头 Chrome 起不来（沙箱 `spawn EPERM`）时的**兜底引擎** |
 
-两个引擎共用同一套不可妥协的规矩：**每一帧是 `t` 的纯函数**、带种子的随机、先分镜后代码、联系表自检。
+两个引擎共用同一套默认做法：**每一帧是 `t` 的纯函数**、带种子的随机、先分镜后代码、联系表自检。
 
-Both engines share the same non-negotiable rules: **each frame is a pure function of `t`**, seeded randomness, storyboard before code, contact-sheet self-review.
+Both engines share the same defaults: **each frame is a pure function of `t`**, seeded randomness, storyboard before code, contact-sheet self-review.
 
 ## 工程契约 (The project contract)
 
@@ -116,7 +116,7 @@ python scripts/render-np.py ... --stream                                 # 强�
 |---|---|
 | `stream: auto-on (no resumable frame cache …)` | 首渲/直出 → 流式，零写盘 |
 | `stream: auto-off (resumable frame cache found …)` | 这一档有可续缓存 → 增量 + 断点续跑 |
-| `stream: off (--no-stream …)` | 你显式要求缓存 |
+| `stream: off (--no-stream …)` | 你显式打开缓存开关 |
 | `stream: forced for depth=10/hdr output` | hi-res/HDR 只有流式路径（缓存路只编 8-bit），`--no-stream` 被如实覆盖 |
 
 **墙钟实测**（同工程 1920×1080@30、180 帧、8 workers、`--force` 消缓存假象、前后确认无争抢 ffmpeg）：**流式 52.4s / 0 字节写盘** vs **缓存 65.9s / 678 MB** → **快 13.5s（−20.5%）**；不带参数复跑缓存路径只要 26.8s（`0 rendered, 180 from cache`，只剩编码）——这正是 auto-off 要保护的场景。诚实代价不变：**流式没有帧缓存 = 不能断点续渲**（昨天就有一次编码中途被杀，救场的是缓存）；迭代期靠 auto-off 自动落在缓存路。

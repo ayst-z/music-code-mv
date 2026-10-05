@@ -156,6 +156,8 @@ class _Bar:
 
 
 # ---- 子帧平均（temporal supersampling）：质感优先，成本**只记录不决策** ----
+# 二分序列的档位边界（2^n 阶）：auto 收敛只在这些点比较前后两档均值。
+_STAGE_K = (3, 5, 9, 17, 33, 65, 129, 257)
 # 统计必须在**主进程**聚合：多进程 worker 里的 _MF 改动不会跨进程回来，
 # 所以渲染函数只把 k 写进 _LAST_K 随结果返回，由调用方 _mf_add 统一累加。
 _MF = {"calls": 0, "frames": 0, "rframes": 0, "ksum": 0, "kmin": None, "kmax": 0}
@@ -333,10 +335,10 @@ def _render_at_img(project: Path, cfg: dict, frame: int, t: float | None,
 def _average_u8(project: Path, cfg: dict, frame: int, strict_rgb: bool):
     """子帧平均（temporal supersampling）：float32 累加 K 个子帧再除 K → uint8 图。
 
-    samples=auto：**只看画面**收敛 —— 从第 4 个子帧起，新子帧与**已有均值**的最大通道差
-    < tol（0..255 计，即 tol/255）就停（加入该子帧后停）；下限 4、上限 324（pdoom 甩镜档），
-    没有任何时间/次数预算（质感优先，成本只进日志）。注意判据刻意**不用**相邻两次均值之差：
-    那个差有 ≤255/k 的上界，tol=3 时 k 永远到不了 85，108–324 档在数学上不可达。
+    samples=auto：**只看画面**收敛 —— 在二分档位边界（2^n 阶：3,5,9,…,257）比较前后两档
+    均值的最大通道差 < tol（0..255 计）即停；首个检查点 k=5（≥下限4 的第一个边界），
+    上限 324（pdoom 甩镜档），无时间/次数预算。静止≈5、缓动≈17–65、甩镜打满 324，
+    正对 pdoom 的 12/36/108–324 阶梯（判据演进见 _STAGE_K 旁注与 _average_u8 docstring）。
     samples=N：N 个子帧含端点均匀铺满 [t-h·dt, t+h·dt]。
     返回 (PIL RGB 图, k_used)；调用统计进 _MF。"""
     shutter = float(cfg["_shutter"])
@@ -359,23 +361,25 @@ def _average_u8(project: Path, cfg: dict, frame: int, strict_rgb: bool):
     acc = None
     mean = None
     k = 0
-    prev = None
+    prev_stage = None
     while k < cap:
         off = offs.get(k) if auto else fixed[k]
         img = _render_at_img(project, cfg, frame, t_center + off * dt, strict_rgb)
         f = np.asarray(img.convert("RGB"), dtype=np.float32)
-        if auto and prev is not None and (k + 1) >= 4 and float(np.abs(f - prev).max()) < tol:
-            # 判据 = **新子帧 vs 已有均值**（不是相邻两次均值之差）：
-            # 相邻均值差 ≤ 255/k —— tol=3 时 k 永远到不了 85，108–324 甩镜档在数学上不可达；
-            # 样本对均值不随 1/k 缩水：运动越猛越晚收敛（甩镜帧会一路采到 324 档），
-            # 静止帧 4 档即停。加入这个「改动 < tol」的子帧后再停（规格：加了但改动小）。
-            mean = (acc + f) / (k + 1)
-            k += 1
-            break
         acc = f if acc is None else acc + f
         k += 1
         mean = acc / k
-        prev = mean
+        if auto and k in _STAGE_K:
+            # 收敛判据（阶段1b 定稿）：**只在二分档位边界比前后两档的均值**。
+            # 另外两条路都在数学上走不通，实测各撞一次墙：
+            #   · 相邻均值差：≤255/k → tol=3 时 k 永远 ≤85，108–324 甩镜档不可达；
+            #   · 新子帧 vs 均值：运动帧永不收敛 → dusk-lofi 实测 avg320（561s，荒谬）。
+            # 档位边界（2^n 阶，端点先行二分序列天然形成）每过一档均值改动约减半：
+            # 静止≈5 档即停、缓动≈17–65、甩镜一路打到 324 —— 正是 pdoom 12/36/108–324 的阶梯。
+            # 判据仍然**只看画面**（< tol/255），无时间/次数预算。
+            if prev_stage is not None and k >= 4 and float(np.abs(mean - prev_stage).max()) < tol:
+                break
+            prev_stage = mean.copy()
     out = np.rint(np.clip(mean, 0, 255)).astype(np.uint8)
     return Image.fromarray(out, "RGB"), k
 
