@@ -659,6 +659,8 @@ import { interpolate, spring, SPRING, Easing, scaleInterpolate } from './anim.js
 
 **三条常用搭配**：① `durationInFrames` 把弹簧**拉伸到正好镜头那么长**——先写镜头秒数、再让入场贴合它，节奏天然对齐；② **错峰入场** = `delay: i × 0.06`（一排元素依次起跳）；③ `overshootClamping: true` 关掉过冲（大字标题用）。**弹簧当驱动器**：`interpolate(spring(...), [0,1], [a,b])` —— 位移、透明度、色相都能挂。scale 动画用 `scaleInterpolate`（**感知线性**：可见面积匀速变化，半程返回 √0.5，直接线性插值会先慢后快）。
 
+**确定性噪声**：`noise1D(x, seed)` / `noise2D(x, y, seed)` / `fbm1(x, {octaves})` —— 晶格哈希 + smoothstep 值噪声，返回 [-1,1]、只由坐标决定。粒子漂移、雾场推进、辉光呼吸、相机微晃的「有机感」都从这里来，比纯正弦自然得多（`noise1D(t*0.6)` 就是一个慢漂移）；`fbm1` 叠倍频出细节。
+
 Physics springs and multi-point interpolation are the two workhorse drivers in `src/anim.js` — both pure functions of `t`. Pair `durationInFrames` with the shot length so entrances land on the cut, stagger with `delay: i×0.06`, and use `scaleInterpolate` for perceptual uniformity.
 
 ### 常见病与修法
@@ -709,6 +711,23 @@ Rhythm is measurable: cut on the beat (boundaries snapped to `60/BPM`, transitio
 **开场色分离**：同一字形画 3 次（`globalCompositeOperation:'lighter'`），R/G/B 各偏 2–6px——字符栅格被三通道拆开的开场感。Credit 用等宽 10–12px、alpha 0.5、距边约 4%；结尾引文卡 12–14px 居中停留 ≥4s。
 
 Cinematic dark narrative: render at 2.39:1 natively (1920×804 and friends), hold average brightness around 22/255 with roughly seven in ten frames having over half their pixels below 16, and let a single amber light own all the warmth — concentrated into one 20–30 s climax while the rest stays cold. Keep cuts rare (scene change every 15–20 s, 1.5–3 s dissolves), use near-black title cards as narrative beats with bilingual type (28–40 px Chinese over 16–20 px English at 0.7 alpha), turn text into material (textured water/spheres/buildings), carry one small persistent motif across every shot — the film's sun — and anchor infinite-horizon compositions at 0.55–0.65 frame height with fov 35–50.
+
+### 逐词排版 (Word-timed typography)
+
+台词级（LRC）之上再细一层，就是卡拉OK、打字机、逐词高亮这些效果的全部来源。模板 `src/captions.js`：
+
+```js
+import { captionPages, pageAt, tokenIndexAt, wordsFromLine } from './captions.js';
+```
+
+- **数据形状**：`{ text, startMs, endMs }` —— `text` **每个词前带空格**（空格是断词标记），渲染时画布要自己保留空格。
+- **`captionPages(captions, {combineTokensWithinMilliseconds, breakOnSilenceAfterMilliseconds})`**：把词分成「一页一屏」——页内累计超过 `combineMs` 就在下一个词前换页（`1200` ≈ 一整句；`0` = 逐词）；`breakOnSilence` 遇到 ≥N ms 的停顿也换页（比较的是时间戳，不读音频）。**页的 `durationMs` 延到下一页起点**——停顿期间字幕继续在屏。
+- **`pageAt(pages, ms)` / `tokenIndexAt(page, ms)`**：当前页 + 当前高亮词 → 卡拉OK逐词变色、逐词位移、逐词缩放都从这一个下标长出来。
+- **`wordsFromLine({text, startMs, endMs})`**：只有段级时间时的**词级估算**——按字重分配（中文按字、西文按字符×0.6、标点几乎不占时），确定性可复现；拿到真对齐（强制对齐/转写）后把词级记录直接喂 `captionPages` 即可，渲染侧零改动。
+
+一页几词由 `combineTokensWithinMilliseconds` 调：整句（叙事、字幕）→ 2–4 词（节奏感）→ 1 词（重拍强调）。
+
+Word-timed typography reduces to one data shape (`{text,startMs,endMs}` with a leading space per word) plus page grouping: `captionPages()` cuts a new page when the accumulated page duration exceeds `combineTokensWithinMilliseconds` (1200 ≈ whole line, 0 = word by word) or when a silence gap qualifies, and each page's `durationMs` runs until the next page so captions ride through pauses. `tokenIndexAt()` yields the karaoke highlight index; `wordsFromLine()` is a deterministic per-character/per-word estimate for segment-level timings, swappable for real alignment output later.
 
 ### T28 · 聊天窗叙事 (Chat-window narrative)
 

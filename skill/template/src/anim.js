@@ -174,3 +174,57 @@ export function scaleInterpolate(x, input, output, opts = {}) {
   const raw = interpolate(x, input, sq, opts);
   return Math.sign(raw) * Math.sqrt(Math.abs(raw));
 }
+
+// ---------------------------------------------------------------- 确定性噪声
+// 值噪声：晶格点哈希 + smoothstep 插值。连续、有界、只由坐标决定——
+// 粒子漂移、雾场推进、辉光呼吸、相机微晃的「有机感」来源（比纯正弦自然得多）。
+
+const NOISE_LATTICE = 374761393;
+const NOISE_SEED = 668265263;
+
+function hashUnit(i, seed) {
+  // 与 rng.js 的 hash1 同口径：返回 [0,1)
+  let h = (Math.imul(i | 0, NOISE_LATTICE) ^ Math.imul(seed | 0, NOISE_SEED)) >>> 0;
+  h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d) >>> 0;
+  h = Math.imul(h ^ (h >>> 12), 0x297a2d39) >>> 0;
+  return ((h ^ (h >>> 15)) >>> 0) / 4294967296;
+}
+
+/** 一维值噪声 → [-1, 1]。`noise1D(t * 0.6)` 就是很自然的慢漂移。 */
+export function noise1D(x, seed = 0) {
+  const i = Math.floor(x);
+  const f = x - i;
+  const u = f * f * (3 - 2 * f);
+  const a = hashUnit(i, seed);
+  const b = hashUnit(i + 1, seed);
+  return (a + (b - a) * u) * 2 - 1;
+}
+
+/** 二维值噪声 → [-,1]（雾场、水面、双轴相机晃动）。 */
+export function noise2D(x, y, seed = 0) {
+  const xi = Math.floor(x), yi = Math.floor(y);
+  const xf = x - xi, yf = y - yi;
+  const ux = xf * xf * (3 - 2 * xf);
+  const uy = yf * yf * (3 - 2 * yf);
+  const h = (dx, dy) => hashUnit(Math.imul(xi + dx, 73856093) ^ Math.imul(yi + dy, 19349663) ^ (seed | 0), 0);
+  const a = h(0, 0), b = h(1, 0), c = h(0, 1), d = h(1, 1);
+  const top = a + (b - a) * ux;
+  const bot = c + (d - c) * ux;
+  return (top + (bot - top) * uy) * 2 - 1;
+}
+
+/** 分形叠加（fBm）：多倍频求和，细节随 octave 长出来。范围约 [-1,1]。 */
+export function fbm1(x, opts = {}) {
+  const octaves = opts.octaves ?? 3;
+  const lacunarity = opts.lacunarity ?? 2;
+  const gain = opts.gain ?? 0.5;
+  const seed = opts.seed ?? 0;
+  let amp = 1, freq = 1, sum = 0, norm = 0;
+  for (let o = 0; o < octaves; o++) {
+    sum += amp * noise1D(x * freq, seed + o * 101);
+    norm += amp;
+    amp *= gain;
+    freq *= lacunarity;
+  }
+  return norm > 0 ? sum / norm : 0;
+}
