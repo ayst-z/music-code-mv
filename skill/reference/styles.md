@@ -749,7 +749,7 @@ Word-timed typography reduces to one data shape (`{text,startMs,endMs}` with a l
 
 Typography fitting lives in `src/textfit.js`: `fitFont()` derives the exact font-size from one `measureText` call (measurement scales linearly with size), `wrapLines()` breaks CJK per character but keeps Latin words whole (with a per-character fallback for single over-long tokens), and `fitWrap()` returns a self-consistent `{fontSize, lines}` pair under both width and line-count constraints.
 
-
+### T28 · 聊天窗叙事 (Chat-window narrative)
 
 **UI 即舞台**：聊天窗就是世界本身——
 
