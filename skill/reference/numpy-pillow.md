@@ -104,22 +104,18 @@ The `fx` block is applied after `render_at` in a fixed chain — bloom, chroma, 
 
 ## 流式输出 · hi-res · HDR (Streaming, hi-res and HDR)
 
-**流式输出 / streaming —— 默认就走它。** 帧渲出来后**直接管道给 ffmpeg**，`frames/` 一个字节都不写（4K120 一次渲的帧缓存实测 17–18 GB → 0）。现在的默认策略是**自动二选一**：
+**流式输出 / streaming —— 只有这一条编码路。** 帧渲出来后**直接管道给 ffmpeg**，`frames/` 一个字节都不写（4K120 一次渲的帧缓存实测 17–18 GB → 0）；`frames/` 缓存照旧可开（断点续渲用），**缓存帧也读出来喂同一条 stdin 管道**——编码器只认 pipe，帧来源（内存/缓存）对它透明。
 
 ```bash
-python scripts/render-np.py --project=demo --out=out/v.mp4 --workers=8   # 默认：自动判定
-python scripts/render-np.py ... --no-stream                              # 强制走帧缓存（可续跑 + 可增量）
-python scripts/render-np.py ... --stream                                 # 强制流式
+python scripts/render-np.py --project=demo --out=out/v.mp4 --workers=8   # 就这一条命令
 ```
 
-| 决策日志（每次跑都打一行） | 含义 |
-|---|---|
-| `stream: auto-on (no resumable frame cache …)` | 首渲/直出 → 流式，零写盘 |
-| `stream: auto-off (resumable frame cache found …)` | 这一档有可续缓存 → 增量 + 断点续跑 |
-| `stream: off (--no-stream …)` | 你显式打开缓存开关 |
-| `stream: forced for depth=10/hdr output` | hi-res/HDR 只有流式路径（缓存路只编 8-bit），`--no-stream` 被如实覆盖 |
+- 旧的「image2 按文件路径喂」**已删除**：单路径 grep `image2`=0、`encode_video`=0、`--no-stream` 已移除、`--stream` 留作 no-op。决策日志只剩一行：`stream: always on (streaming is the only encoder path)`；收尾日志 `frames: X rendered, Y from cache (both feed the same stdin pipe)`。
+- **墙钟实测（对照删掉的旧路径，同工程 180 帧 blur auto、竞争=0）**：**fresh 120.4s → 65.7s（−45%）**——结构红利是 x264 与渲染**并发**（旧路渲完才开编）；**resume 11.6s → 2.3s（−80%）**——缓存 180 张 640p PNG 的读→转发实测仅 2.0s，预期的「多一次拷贝」在此规模可忽略（4K×324 子帧的极端档若成瓶颈会另记）。位率两版一致（10067/10071 kb/s 同输入同参）。
+- **Chrome 引擎同款改造**（`-f image2pipe` + stdin 泵、**渲染前先 spawn ffmpeg**、supervisor 按帧号有序分发）：fresh 8.7→8.1s、resume 7.7→6.8s；位率 9790=9790；**同帧 byte-identical**（sha1 双侧一致、max|Δ|=0、921600/921600 像素零差）。规模越大并发红利越大——x265 4K 分钟级编码最受益。
+- 两个实测踩坑（复现者注意）：node 子进程 IPC 默认 JSON 序列化会把 Buffer 变普通对象 → 管道 EOF，需 `serialization:'advanced'` + 收侧 `Buffer.isBuffer` 归一化；泵的 race+once 竞速要「谁赢都摘双方监听」否则监听悬挂。
 
-**墙钟实测**（同工程 1920×1080@30、180 帧、8 workers、`--force` 消缓存假象、前后确认无争抢 ffmpeg）：**流式 52.4s / 0 字节写盘** vs **缓存 65.9s / 678 MB** → **快 13.5s（−20.5%）**；不带参数复跑缓存路径只要 26.8s（`0 rendered, 180 from cache`，只剩编码）——这正是 auto-off 要保护的场景。诚实代价不变：**流式没有帧缓存 = 不能断点续渲**（昨天就有一次编码中途被杀，救场的是缓存）；迭代期靠 auto-off 自动落在缓存路。
+**HDR 走同一条管道**：`--depth=10|12` 时 `render_at` 出 uint8 → `v*257` 扩 16 位 → `rgb48le`/`rgb48le12` 管道 → ffmpeg 落 `yuv420p10le/12le` + BT.2020/PQ + libx265。Chrome 侧 `--depth=12` 同样 stdin 直入 x265 main12（冒烟 `hevc (Rext) yuv420p12le` ✓）。
 
 **输出步骤全程有进度条**（同一套 pct/ETA/fps 口径）：`[render]`（渲染两分支共用）、`[encode]`（解析 ffmpeg `-progress pipe:1`）、`[stream]`（按 stdin 写入帧数）、`[tts]`（逐条文件名）、`[music]`（按 section）。非 TTY（管道/工作室 job log）每 4s 落一行，完成拍必落 100%。
 
@@ -127,7 +123,7 @@ python scripts/render-np.py ... --stream                                 # 强�
 
 **hi-res 支持**：`--w --h --fps --duration --format=png|jpeg` 全部可覆盖 `project.json`（4K120 就是 `--w=3840 --h=2160 --fps=120`）。**换档会自动强制重渲**：引擎在 `frames/.renderpass` 记一份「渲染档位指纹」（尺寸/帧率/时长/超采样/帧容器），与当前不符就拒绝复用旧帧——否则 CLI 覆盖会拿到上一档的缓存。hi-res 下帧容器用 `--format=jpeg`（quality 92、4:4:4）比 PNG 快约 3 倍；PNG 的 `pngLevel` 只影响写盘速度、不影响画质（PNG 恒无损）。
 
-**HDR10**：`--depth=10|12 --hdr10`。8 位 PNG 装不下 10 位，所以 **HDR 走流式**（缓存路径只能编 8-bit，引擎会自动开流式并打日志）：`render_at` 出 uint8 → `v*257` 线性扩到 16 位 → `rgb48le` 管道 → ffmpeg 落 `yuv420p10le` + BT.2020/PQ 打标 + libx265（`-tag:v hvc1`）。实测输出：`hevc (Main 10) · yuv420p10le (bt2020nc/bt2020/smpte2084)`。
+**HDR10**：`--depth=10|12 --hdr10`。8 位 PNG 装不下 10 位，所以 HDR 天生只走管道（见上）：`render_at` 出 uint8 → `v*257` 线性扩到 16 位 → `rgb48le` 管道 → ffmpeg 落 `yuv420p10le` + BT.2020/PQ 打标 + libx265（`-tag:v hvc1`）。实测输出：`hevc (Main 10) · yuv420p10le (bt2020nc/bt2020/smpte2084)`。
 
 **HDR Vivid (T/UWA 005)**：`--hdr-vivid` 自动升到 10-bit + HDR10 基底，并在流式过程中**逐帧算动态元数据**（每 `sampleEvery=6` 帧采一段：`maxSCL`/`maxRGB`/`avg`/`avgLum`/`p99Lum`/`brightFrac`，附场景切换检测），写出 `<out>.hdrvivid.json`。**如实说明**：本机 ffmpeg（gyan essentials 6.1.1）**没有 CUVA/HDR-Vivid SEI 编码器**，所以交付形态是「合规 HDR10 基底 + Vivid 动态元数据 sidecar」，SEI 由下游支持 Vivid 的编码器合入。
 

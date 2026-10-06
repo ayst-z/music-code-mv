@@ -191,6 +191,7 @@ export async function createNodeRenderer(opts) {
       ? mainCanvas.toBuffer('image/jpeg', quality)
       : mainCanvas.toBuffer('image/png');
     fs.writeFileSync(file, buf);
+    return buf;   // 编码器只见 stdin：返回字节给调用方喂管道（文件=缓存）
   };
 
   const scenes = () => {

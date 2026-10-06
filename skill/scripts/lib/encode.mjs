@@ -122,23 +122,24 @@ export function validateEncodeOptions(opts = {}) {
 /**
  * Build the ffmpeg argument list.
  * hdr10 => 10-bit HEVC, Rec.2020 primaries, PQ transfer, HDR10 mastering metadata.
+ *
+ * **单一编码路径 = stdin 管道（image2pipe）**：帧由调用方按写入计数截断（推多少编多少），
+ * 旧的按文件路径输入已删 —— `-start_number`/`-frames:v` 的文件语义不复存在，
+ * 也就没有"上一次跑得更长 → 陈旧帧被顺带读进来"的问题（截断天然发生在写入侧）。
  */
 export function buildEncodeArgs(opts) {
   const {
-    fps, startNumber, framePattern, out, audio,
+    fps, out, audio,
     encoder, crf = 17, preset = 'medium', hdr10 = false, hdrMaster = null,
     // output color depth: 8 (default) | 10 | 12 — 10/12 select a high-bit-depth
     // pixel format (yuv420p10le / yuv420p12le); x265 auto-picks main/main10/main12
-    depth = 8,
-    // cap the output at N frames: without it image2 keeps reading contiguous
-    // f%05d files on disk, appending stale frames from a longer previous run
-    frames = null
+    depth = 8
   } = opts;
   // P1-R2 兜底：走到这里必须是 libx265 + hdr10；入口侧提前调 validateEncodeOptions 可在渲染前失败
   validateEncodeOptions(opts);
 
-  const args = ['-y', '-loglevel', 'error', '-framerate', String(fps),
-    '-start_number', String(startNumber), '-i', framePattern];
+  const args = ['-y', '-loglevel', 'error', '-f', 'image2pipe',
+    '-framerate', String(fps), '-i', '-'];
 
   const hasAudio = !!audio;
   if (hasAudio) args.push('-i', audio);
@@ -195,21 +196,23 @@ export function buildEncodeArgs(opts) {
   }
 
   if (hasAudio) args.push('-c:a', opts.audioCodec || 'aac', '-b:a', opts.audioBitrate || '192k', '-shortest');
-  if (frames) args.push('-frames:v', String(frames));
   args.push('-movflags', '+faststart', out);
   return args;
 }
 
 /**
- * 跑 ffmpeg。传 `totalFrames` 就给出**进度条**（`-progress pipe:1` 解析 `frame=`）——
- * 4K120 的 x265 main12 编码要 15–20 分钟，全程静默是不可接受的；
- * 不传则退回原来的静默模式（联系表拼图这类秒级任务用）。
+ * 跑 ffmpeg。三种形态：
+ *  1. `frames`（Buffer[] 或 async iterable）→ **stdin 管道喂帧**（视频编码的唯一喂法）：
+ *     帧边渲边进管、真流式零等待；推多少编多少 = 天然的 `-frames:v` 截断。
+ *  2. `totalFrames` 且无 frames → 有进度条的常规调用（-progress pipe:1 解析 frame=）。
+ *  3. 都不传 → 静默 execFile（联系表拼图这类秒级任务，行为与从前逐字节一致）。
  * HDR 写入就发生在这一步，所以进度条天然覆盖 HDR 输出。
  */
 export function runFfmpeg(ffmpeg, args, opts = {}) {
   const total = Number(opts.totalFrames || 0);
   const label = opts.label || 'encode';
-  if (!(total > 0)) {
+  const frames = opts.frames;
+  if (!(total > 0) && !frames) {
     return (async () => {
       try {
         return await execFileAsync(ffmpeg, args, { maxBuffer: 1 << 26 });
@@ -223,8 +226,11 @@ export function runFfmpeg(ffmpeg, args, opts = {}) {
 
   return new Promise((resolve, reject) => {
     const argv = args.concat(['-progress', 'pipe:1', '-nostats']);
-    const child = spawn(ffmpeg, argv, { stdio: ['ignore', 'pipe', 'pipe'] });
-    const bar = createProgress({ total, label });
+    const child = spawn(ffmpeg, argv, { stdio: [frames ? 'pipe' : 'ignore', 'pipe', 'pipe'] });
+    const bar = total > 0 ? createProgress({ total, label }) : null;
+    // ffmpeg 先死时写侧会 EPIPE：吞掉它，让 close 分支用 stderr 尾巴报真因
+    // （与 np 引擎 BrokenPipeError → rc+stderr 的处理同构）
+    child.stdin.on('error', () => { /* handled via close */ });
     let outBuf = '';
     let errTail = [];
     child.stdout.setEncoding('utf8');
@@ -234,10 +240,10 @@ export function runFfmpeg(ffmpeg, args, opts = {}) {
       outBuf = lines.pop();
       for (const ln of lines) {
         const m = /^frame=(\d+)/.exec(ln.trim());
-        if (m) {
+        if (m && bar) {
           const n = Math.min(total, Number(m[1]));
           bar.update(n, { note: label });
-        } else if (ln.indexOf('progress=end') >= 0) {
+        } else if (ln.indexOf('progress=end') >= 0 && bar) {
           bar.update(total, { note: label });
         }
       }
@@ -245,18 +251,42 @@ export function runFfmpeg(ffmpeg, args, opts = {}) {
     child.stderr.setEncoding('utf8');
     child.stderr.on('data', (d) => { errTail.push(d); if (errTail.length > 60) errTail.shift(); });
     child.on('error', (e) => {
-      bar.done();
+      if (bar) bar.done();
       if (/ENOENT/.test(String(e && e.message))) reject(notFound());
       else reject(new Error('ffmpeg failed: ' + (e && e.message)));
     });
     child.on('close', (code) => {
-      if (code === 0) { bar.done(); resolve({ code: 0 }); }
+      if (code === 0) { if (bar) bar.done(); resolve({ code: 0 }); }
       else {
-        bar.done();
+        if (bar) bar.done();
         const tail = errTail.join('').split('\n').slice(-8).join('\n');
         reject(new Error('ffmpeg failed (exit ' + code + '):\n' + tail));
       }
     });
+
+    if (frames) {
+      // 泵：逐帧写 stdin，带背压（write 返回 false 等 drain）；ffmpeg 中途退出时
+      // 用 close 竞速避免 pump 卡死 —— close 分支才是结果裁决者。
+      (async () => {
+        try {
+          for await (const buf of frames) {
+            if (child.stdin.destroyed || child.stdin.writableEnded) break;
+            if (!child.stdin.write(buf)) {
+              // 等 drain；close 先到也能醒 —— 谁赢都把**双方**监听摘掉
+              // （race + once 的败者会悬挂，帧一多就是 MaxListeners 泄漏警告）
+              await new Promise((r) => {
+                const done = () => { child.stdin.off('drain', done); child.off('close', done); r(); };
+                child.stdin.once('drain', done);
+                child.once('close', done);
+              });
+            }
+          }
+          if (!child.stdin.destroyed && !child.stdin.writableEnded) child.stdin.end();
+        } catch {
+          try { child.stdin.destroy(); } catch { /* ignore */ }
+        }
+      })();
+    }
   });
 }
 

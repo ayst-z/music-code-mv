@@ -257,7 +257,34 @@ function glArgs(mode) {
 }
 
 // ---------------------------------------------------------------- encode
-async function encode() {
+// 可 push 的帧队列（async iterable）：runFfmpeg 的 stdin 泵边渲边拉 ——
+// 编码与渲染并发（旧的按路径喂法必须渲完才能开编，串行等待是最大浪费）
+function makeFrameQueue() {
+  const queued = [];
+  let ended = false;
+  let notify = null;
+  const wake = () => { if (notify) { const n = notify; notify = null; n(); } };
+  return {
+    push(buf) { queued.push(buf); wake(); },
+    end() { ended = true; wake(); },
+    async *[Symbol.asyncIterator]() {
+      for (;;) {
+        while (queued.length) yield queued.shift();
+        if (ended) return;
+        await new Promise((r) => { notify = r; });
+      }
+    }
+  };
+}
+
+/**
+ * 起编码 —— **唯一编码路径 = stdin 管道**（image2pipe，文件路径输入已删）。
+ * 先 spawn ffmpeg，返回 {push, finish}：渲染循环里逐帧 push（截图 Buffer 或缓存
+ * 读出的字节，两者走同一口径），渲完 finish() → 关 stdin → 等 ffmpeg → 输出统计。
+ * 截断天然发生在写入侧（推多少编多少）。
+ * HDR10 渲前定编码器 / validateEncodeOptions / depth≥10 换 x265 —— 一字未动（P1-R2）。
+ */
+async function beginEncode() {
   const start = Math.max(0, Number(opt.start || 0));
   const end = Math.min(TOTAL, Number(opt.end || TOTAL));
   let encoder;
@@ -301,12 +328,7 @@ async function encode() {
     (DEPTH >= 10 ? '  [' + DEPTH + '-bit color]' : ''));
 
   const args = buildEncodeArgs({
-    fps: FPS, startNumber: start,
-    // bound the output to the requested range: image2 keeps reading contiguous
-    // files on disk, so frames left over from a longer previous run would
-    // otherwise be silently appended to this encode
-    frames: Math.max(1, end - start),
-    framePattern: path.join(FRAMES, 'f%05d.' + EXT),
+    fps: FPS,
     out: OUT, audio: opt.audio ? path.resolve(projectDir, String(opt.audio)) : null,
     encoder, preset: String(opt.preset || 'medium'), crf: Number(opt.crf || 17),
     hdr10, depth: DEPTH, audioCodec: opt['audio-codec'], audioBitrate: opt['audio-bitrate']
@@ -315,19 +337,29 @@ async function encode() {
   // --out=sub/video.mp4 would otherwise fail only AFTER the whole render
   fs.mkdirSync(path.dirname(OUT), { recursive: true });
   // 编码进度条：帧数已知（含 HDR 写入阶段，x265 4K120 要十几分钟，不能静默）
-  await runFfmpeg(FFMPEG, args, { totalFrames: Math.max(1, end - start), label: 'encode' });
+  const queue = makeFrameQueue();
+  const pending = runFfmpeg(FFMPEG, args, {
+    totalFrames: Math.max(1, end - start), label: 'encode', frames: queue
+  });
 
-  const size = fs.statSync(OUT).size;
-  let probe = '';
-  try {
-    const { execFile } = await import('node:child_process');
-    const { promisify } = await import('node:util');
-    const r = await promisify(execFile)(FFMPEG, ['-i', OUT], { maxBuffer: 1 << 24 }).catch(e => ({ stderr: e.stderr || '' }));
-    probe = (r.stderr || '').split('\n').filter(l => /Duration|Stream #/.test(l)).join('\n');
-  } catch { /* ignore */ }
-  log('OK  ' + (size / 1048576).toFixed(2) + ' MB  ' + OUT);
-  if (probe) console.log(probe.trim());
-  return { size, encoder };
+  return {
+    push: (buf) => queue.push(buf),
+    async finish() {
+      queue.end();
+      await pending;
+      const size = fs.statSync(OUT).size;
+      let probe = '';
+      try {
+        const { execFile } = await import('node:child_process');
+        const { promisify } = await import('node:util');
+        const r = await promisify(execFile)(FFMPEG, ['-i', OUT], { maxBuffer: 1 << 24 }).catch(e => ({ stderr: e.stderr || '' }));
+        probe = (r.stderr || '').split('\n').filter(l => /Duration|Stream #/.test(l)).join('\n');
+      } catch { /* ignore */ }
+      log('OK  ' + (size / 1048576).toFixed(2) + ' MB  ' + OUT);
+      if (probe) console.log(probe.trim());
+      return { size, encoder };
+    }
+  };
 }
 
 // ---------------------------------------------------------------- worker
@@ -458,13 +490,17 @@ async function runWorker() {
     shoot = async (t, file) => {
       const work = (async () => {
         await page.evaluate((tt) => window.renderAt(tt), t);
-        await page.screenshot(FMT === 'jpeg'
-          ? { path: file, type: 'jpeg', quality: QUALITY }
-          : { path: file, type: 'png' });
+        const buf = await page.screenshot(FMT === 'jpeg'
+          ? { type: 'jpeg', quality: QUALITY }
+          : { type: 'png' });
+        // 编码器只见 stdin：缓存照写（文件=缓存，resume 的价值不变），
+        // 字节直接交调用方喂管道 —— 截图 Buffer 直进管道，真流式零等待
+        fs.writeFileSync(file, buf);
+        return buf;
       })();
       let timer = null;
       try {
-        await Promise.race([
+        return await Promise.race([
           work,
           new Promise((_, reject) => {
             timer = setTimeout(() => reject(new Error(
@@ -564,6 +600,9 @@ async function runWorker() {
     // standalone (non-worker) runs used to print nothing for the whole loop — a long
     // serial render was indistinguishable from a hang. Report progress like the supervisor.
     const serialBar = IS_WORKER ? null : createProgress({ total: mine.length, label: 'render' });
+    // 唯一编码路径 = stdin 管道：**渲染开始前**就 spawn ffmpeg，帧边渲边进管（真流式）。
+    // 子进程（IS_WORKER）没有编码器：帧字节经 IPC 交主管进程按序推入同一条管道。
+    const enc = IS_WORKER ? null : await beginEncode();
     for (const f of mine) {
       const file = framePath(f);
       // 没有 timeline 元数据的工程过去是 frameSig=null → 文件存在就盲复用（改尺寸/改 src
@@ -577,13 +616,19 @@ async function runWorker() {
       }
       const exists = fs.existsSync(file);
       const cached = exists && (frameSig ? sigStore[String(f)] === frameSig : true);
+      let frameBuf;
       if (cached) {
         reused++;
+        // 缓存命中：读文件字节喂**同一条**管道（与 np 引擎对齐）
+        frameBuf = fs.readFileSync(file);
       } else {
-        await shoot(f / FPS, file);
+        // 新渲：截图 Buffer 直进管道（缓存照写，文件只是缓存）
+        frameBuf = await shoot(f / FPS, file);
         rendered++;
         if (frameSig) sigStore[String(f)] = frameSig;
       }
+      if (enc) enc.push(frameBuf);
+      if (process.send) process.send({ mvFrame: f, buf: frameBuf });
       const done = rendered + reused;
       if (IS_WORKER) {
         if (Date.now() - lastReport > 200 || done === mine.length) {
@@ -600,7 +645,7 @@ async function runWorker() {
       saveSignatures(SIGFILE, sigStore);
       log('frames: ' + rendered + ' rendered, ' + reused + ' reused' +
         (reused > 0 ? '  (incremental — ' + ((reused / Math.max(1, rendered + reused)) * 100).toFixed(0) + '% skipped)' : ''));
-      await encode();
+      await enc.finish();
       if (opt.clean) {
         fs.rmSync(FRAMES, { recursive: true, force: true });
         log('frame cache purged (--clean)');
@@ -643,6 +688,15 @@ async function runSupervisor() {
   const rangeEnd = Math.min(TOTAL, Number(opt.end || TOTAL));
   const rangeTotal = Math.max(1, rangeEnd - rangeStart);
   const progress = createProgress({ total: rangeTotal, label: 'render' });
+  // 唯一编码路径 = stdin 管道：渲染开始前就起 ffmpeg；子进程把帧字节经 IPC 送上来，
+  // 这里按**帧号有序**推入同一条管道（乱序到达的先在 hold 里等，内存 = 乱序窗口）
+  const enc = await beginEncode();
+  const hold = new Map();
+  let nextPush = rangeStart;
+  const dispense = (f, buf) => {
+    hold.set(f, buf);
+    while (hold.has(nextPush)) { enc.push(hold.get(nextPush)); hold.delete(nextPush); nextPush++; }
+  };
   const children = [];
   const done = new Array(n).fill(0);
   const totals = new Array(n).fill(0);
@@ -651,7 +705,17 @@ async function runSupervisor() {
   const spawnWorker = (i) => {
     const child = spawn(process.execPath, [fileURLToPath(import.meta.url), ...passThrough, '--worker=' + i, '--workers=' + n], {
       cwd: process.cwd(), windowsHide: true,
+      // advanced = structured clone：Buffer 原样过 IPC（默认 JSON 序列化会把它
+      // 变成 {type:'Buffer',data:[…]} 普通对象 → stdin.write 抛错 → 管道 EOF）
+      stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
+      serialization: 'advanced',
       env: { ...process.env }
+    });
+    // 帧字节走 IPC，按帧号有序交给编码管道（收侧再归一化一次，防 serialization 回退）
+    child.on('message', (m) => {
+      if (!m || m.mvFrame === undefined) return;
+      const buf = Buffer.isBuffer(m.buf) ? m.buf : Buffer.from(m.buf && m.buf.data ? m.buf.data : m.buf);
+      dispense(m.mvFrame, buf);
     });
     // ##PROGRESS / ##STATS 可能被 pipe 边界截成半行：必须留残行缓冲，否则统计丢失
     // （末尾汇总显示 "0 rendered, 0 reused"，渲染本身却正常）—— CODE-REVIEW P2-R5
@@ -714,7 +778,7 @@ async function runSupervisor() {
   log('all workers finished in ' + (progress.elapsedMs / 1000).toFixed(1) + 's');
   log('frames: ' + rendered + ' rendered, ' + reused + ' reused' +
       (reused > 0 ? '  (incremental — ' + ((reused / Math.max(1, rendered + reused)) * 100).toFixed(0) + '% skipped)' : ''));
-  await encode();
+  await enc.finish();
   if (opt.clean) {
     fs.rmSync(FRAMES, { recursive: true, force: true });
     log('frame cache purged (--clean)');

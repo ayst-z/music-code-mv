@@ -204,7 +204,7 @@ def _log_blur(shutter: float, samples, tol: int, n: int, wall: float) -> None:
 
 class _AutoOffsets:
     """auto 采样的子帧位置序列：端点先行 [-h, +h]，其后反复二分最粗间隙 ——
-    **任意前缀都均匀铺满 [-h, +h]**，所以「渲一个、与已有均值比一次」能边渲边收敛，
+    **任意前缀都均匀铺满 [-h, +h]**，所以「渲一个、在档位边界比一次两档均值」能边渲边收敛，
     而序列只由 shutter 决定 → 任何进程重算结果一致（确定性）。
     上限 324 = pdoom 甩镜/急推档；收敛判据只看画面（tol），无时间/次数预算。
     固定 --samples=N 走 linspace（含两端点），严格按规格均匀铺满快门窗口。"""
@@ -425,16 +425,54 @@ def render_frame(project: Path, frame: int, force: bool = False, cfg: dict | Non
     cfg = cfg if cfg is not None else load_project(project)
     # 单帧或子帧平均（shutter 由 cfg["_shutter"] 决定）；落盘仍是一帧
     img = _frame_img(project, cfg, frame, strict_rgb=True)
+    _store_frame(img, project, frame, cfg)
+    return "rendered"
+
+
+def _store_frame(img, project: Path, frame: int, cfg: dict) -> None:
+    """写帧缓存。PNG 恒无损（compress_level 不影响画质，只影响写盘速度）；
+    hi-res 用 jpeg（quality 92、4:4:4）比 PNG 快约 3 倍 —— 与 Chrome 引擎同名同义。
+    缓存的价值是 resume/增量；**编码器不再读它**——它只作为 stdin 管道的备用来源。"""
+    out = frame_path(project, frame)
     out.parent.mkdir(parents=True, exist_ok=True)
     tmp = out.with_name(out.name + ".tmp")
-    # 帧容器按分辨率选：PNG 恒无损（compress_level 不影响画质，只影响写盘速度）；
-    # hi-res 用 jpeg（quality 92、4:4:4）比 PNG 快约 3 倍 —— 与 Chrome 引擎的 frameFormat 同名同义。
     if str(cfg.get("frameFormat", "png")).lower() in ("jpeg", "jpg"):
         img.save(tmp, "JPEG", quality=int(cfg.get("jpegQuality", 92)), subsampling=0)
     else:
         img.save(tmp, "PNG", compress_level=int(cfg.get("pngLevel", 1)))
     os.replace(tmp, out)
-    return "rendered"
+
+
+def _rgb_bytes(img, depth: int) -> bytes:
+    """**唯一**的字节口径：刚渲的帧与缓存读出的帧都走这里 ——
+    depth<10 → rgb24；depth>=10 → v*257 线性扩到 16 位的 rgb48le（与旧流式逐位一致）。"""
+    arr = np.asarray(img.convert("RGB"))
+    if depth >= 10:
+        u16 = arr.astype(np.uint16)
+        u16 = (u16 << 8) | u16          # v * 257：0..255 → 0..65535 线性，无带状误差
+        return np.ascontiguousarray(u16).astype("<u2").tobytes()
+    return np.ascontiguousarray(arr).tobytes()
+
+
+def _pipe_frame(project: Path, cfg: dict, frame: int, depth: int, stats: bool, force: bool):
+    """编码器的**唯一帧来源**（编码器只认 stdin，文件只是缓存）：
+    - 缓存命中且非 --force：PIL 打开 → _rgb_bytes（与刚渲的帧同一条字节口径，格式完全一致）
+    - 否则渲染（含子帧平均）→ _store_frame 写缓存 → _rgb_bytes
+    返回 (bytes, st|None, k子帧数, from_cache)。断点续渲靠第一条分支。"""
+    fp = frame_path(project, frame)
+    if fp.exists() and not force:
+        img = Image.open(fp).convert("RGB")
+        st = _stats_of(np.asarray(img).astype(np.uint16)) if stats else None
+        return _rgb_bytes(img, depth), st, 0, True
+    img = _frame_img(project, cfg, frame, strict_rgb=True)
+    st = _stats_of(np.asarray(img.convert("RGB")).astype(np.uint16)) if stats else None
+    _store_frame(img, project, frame, cfg)
+    return _rgb_bytes(img, depth), st, _LAST_K, False
+
+
+def _pipe_worker(project_str: str, frame: int, depth: int, stats: bool,
+                 cfg: dict, force: bool):
+    return _pipe_frame(Path(project_str), cfg, frame, depth, stats, force)
 
 
 def n_frames(cfg: dict) -> int:
@@ -677,58 +715,6 @@ def find_ffmpeg(project: Path) -> str:
     die("ffmpeg not found (set FFMPEG_PATH, or: npm install ffmpeg-static)")
 
 
-def encode_video(project: Path, cfg: dict, out: Path, audio: str | None) -> None:
-    ff = find_ffmpeg(project)
-    n = n_frames(cfg)
-    sample = frame_path(project, 0)                      # .../frames/f00000.png|jpg
-    pattern = str(sample).replace(sample.name, "f%05d" + sample.suffix)
-    # -progress pipe:1：进度走 stdout（frame=），-nostats 关掉 stderr 上的重复统计
-    args = [ff, "-y", "-loglevel", "error", "-nostats", "-progress", "pipe:1",
-            "-framerate", str(cfg["fps"]), "-start_number", "0", "-i", pattern]
-    if audio:
-        args += ["-i", audio, "-map", "0:v:0", "-map", "1:a:0"]
-    args += ["-c:v", "libx264", "-preset", "medium", "-crf", "17",
-             "-pix_fmt", "yuv420p",
-             "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2"]
-    if audio:
-        args += ["-c:a", "aac", "-b:a", "192k", "-shortest"]
-    args += ["-frames:v", str(n), "-movflags", "+faststart", str(out)]
-    out.parent.mkdir(parents=True, exist_ok=True)
-    # 编码不再是静默步：解析 frame= 实时更新进度条（与 runFfmpeg 的口径一致）
-    bar = _Bar("encode", n)
-    proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                            text=True, encoding="utf-8", errors="replace")
-    err_tail: list = []
-    for line in proc.stdout:
-        s = line.strip()
-        if not s:
-            continue
-        if s.startswith("frame="):
-            try:
-                bar.update(min(n, int(s.split("=", 1)[1].split()[0])))
-            except ValueError:
-                pass
-        elif s == "progress=end":
-            bar.update(n)
-        else:
-            # stdout 混进来的非进度行 = ffmpeg 的报错/告警；progress 字段（fps= speed= …）不算
-            head, sep, _rest = s.partition("=")
-            if not (sep and " " not in s and head.replace("_", "").isalnum()):
-                err_tail.append(s)
-                if len(err_tail) > 60:
-                    err_tail.pop(0)
-    rc = proc.wait()
-    bar.finish()
-    if rc != 0:
-        die("ffmpeg failed:\n" + "\n".join(err_tail[-8:]))
-    log("encoded: %s" % out)
-    # verify: duration + streams, same as the Chrome engine's finish step
-    chk = subprocess.run([ff, "-hide_banner", "-i", str(out)], capture_output=True, text=True)
-    for line in (chk.stderr or "").splitlines():
-        if "Duration" in line or "Stream #" in line:
-            log("  " + line.strip())
-
-
 def _stats_of(arr_u16) -> dict:
     """一帧的 HDR Vivid 动态元数据采样：maxRGB / 均值 / 分位 / 过曝比例。
     都是 v*257 线性扩到 0..65535 之后的值，落地时按 16 位归一化写进 JSON。"""
@@ -747,43 +733,15 @@ def _stats_of(arr_u16) -> dict:
     }
 
 
-def render_frame_bytes(project: Path, frame: int, depth: int = 8, stats: bool = False,
-                       cfg: dict | None = None):
-    """内存里渲一帧并直接产出给 ffmpeg 的裸字节 —— **不写盘**（流式输出 / streaming）。
+def render_video(project: Path, out: Path, audio: str | None, workers: int,
+                 depth: int, hdr10: bool, force: bool,
+                 vivid: bool = False, vivid_every: int = 6) -> None:
+    """**唯一的视频编码路径**：帧（缓存读出的或刚渲的）→ stdin 管道 → ffmpeg。
 
-    depth < 10 → rgb24；depth >= 10 → rgb48le（按 v*257 线性扩到 16 位，
-    ffmpeg 再落到 yuv420p10le/12le）。HDR 走这条，因为 8 位 PNG 装不下 10 位。
-    stats=True 时同时返回该帧的 Vivid 元数据采样（用于 --hdr-vivid）。
-    cfg 显式下传：原因同 render_frame 的 docstring（worker 进程读不到 CLI 覆盖）。
-    """
-    cfg = cfg if cfg is not None else load_project(project)
-    # 单帧或子帧平均（与缓存路径同一个入口）；子帧统计只进 _MF
-    img = _frame_img(project, cfg, frame, strict_rgb=False)
-    arr = np.asarray(img.convert("RGB"))
-    st = _stats_of(arr.astype(np.uint16)) if stats else None
-    if depth >= 10:
-        u16 = arr.astype(np.uint16)
-        u16 = (u16 << 8) | u16          # v * 257：0..255 → 0..65535 线性，无带状误差
-        data = np.ascontiguousarray(u16).astype("<u2").tobytes()
-    else:
-        data = np.ascontiguousarray(arr).tobytes()
-    return (data, st) if stats else data
-
-
-def _bytes_worker(project_str: str, frame: int, depth: int, stats: bool = False,
-                  cfg: dict | None = None):
-    # 同 _worker：子帧数随结果回主进程聚合
-    return render_frame_bytes(Path(project_str), frame, depth, stats, cfg), _LAST_K
-
-
-def render_video_stream(project: Path, out: Path, audio: str | None, workers: int,
-                        depth: int, hdr10: bool, vivid: bool = False,
-                        vivid_every: int = 6) -> None:
-    """流式输出：帧渲染出来直接管道进 ffmpeg，**一帧都不落盘**。
-
-    省的是什么：4K120 一次渲下来帧缓存实测 17–18 GB；流式把它降到 0。
-    换来的是什么（诚实的取舍）：没有帧缓存 = **不能断点续渲**，重编码必须重渲。
-    走 --stream 时请把它当成「一遍过」的交付 pass。
+    编码器只见 pipe（rawvideo/rgb 直喂，HDR 10/12-bit 同一条路，按文件路径喂 ffmpeg 的
+    旧入口已删）；文件只是缓存：命中就 PIL 读出、走同一条 _rgb_bytes 口径喂管道，
+    没命中就渲完顺手写缓存 —— 断点续渲（resume）的价值保留；代价是读→转发比文件
+    直读多一次拷贝（A/B 数字见回报）。--force = 全部重渲并刷新缓存，否则优先复用。
 
     vivid=True：边管道边算 **HDR Vivid 动态元数据**，写出 <out>.hdrvivid.json。
     基底层仍是合规的 HDR10 信号（bt2020 + PQ），因为本机 ffmpeg 没有 CUVA/Vivid
@@ -825,9 +783,10 @@ def render_video_stream(project: Path, out: Path, audio: str | None, workers: in
     out.parent.mkdir(parents=True, exist_ok=True)
 
     eff = max(1, min(workers, math.ceil(n / 16) if n else 1))
-    log("streaming: %d frames %dx%d@%d -> %s (no frame cache, depth=%d%s%s)"
+    log("encode path: stdin pipe only — %d frames %dx%d@%d -> %s (depth=%d%s%s, cache resume=%s)"
         % (n, w, h, fps, out.name, depth, ", HDR10" if hdr10 else "",
-           ", vivid-meta" if vivid else ""))
+           ", vivid-meta" if vivid else "",
+           "off (--force)" if force else "on (reused frames feed the same pipe)"))
     if eff != workers:
         log("workers: %d -> %d (only %d frames)" % (workers, eff, n))
 
@@ -861,15 +820,19 @@ def render_video_stream(project: Path, out: Path, audio: str | None, workers: in
     expect = w * h * (6 if depth >= 10 else 3)   # 每帧裸字节数，用于核对送入量
     sent = 0
     sent_frames = 0
+    rendered = cached = 0
     proc = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL,
                             stderr=subprocess.PIPE)
     try:
         if eff == 1:
             for i in range(n):
-                data = render_frame_bytes(project, i, depth, vivid, cfg)
-                _mf_add(_LAST_K)
+                data, st, k, from_cache = _pipe_frame(project, cfg, i, depth, vivid, force)
+                _mf_add(k)
+                if from_cache:
+                    cached += 1
+                else:
+                    rendered += 1
                 if vivid:
-                    data, st = data
                     note(i, st)
                 proc.stdin.write(data)
                 sent += len(data)
@@ -888,13 +851,16 @@ def render_video_stream(project: Path, out: Path, audio: str | None, workers: in
                 nxt = 0
                 for done in range(n):
                     while nxt < n and len(pending) < window:
-                        pending.append(pool.submit(_bytes_worker, pstr, nxt, depth, vivid, cfg))
+                        pending.append(pool.submit(_pipe_worker, pstr, nxt, depth, vivid,
+                                                   cfg, force))
                         nxt += 1
-                    payload, k = pending.popleft().result()
+                    data, st, k, from_cache = pending.popleft().result()
                     _mf_add(k)
-                    data = payload
+                    if from_cache:
+                        cached += 1
+                    else:
+                        rendered += 1
                     if vivid:
-                        data, st = data
                         note(done, st)
                     proc.stdin.write(data)
                     sent += len(data)
@@ -920,7 +886,9 @@ def render_video_stream(project: Path, out: Path, audio: str | None, workers: in
     log("stream: piped %d/%d frames, %.1f MB (expect %.1f MB)"
         % (sent_frames, n, sent / 1e6, n * expect / 1e6))
     dt = time.time() - t0
-    log("streamed+encoded in %.1fs (%.0f ms/frame, frames on disk: 0)"
+    log("frames: %d rendered, %d from cache (both feed the same stdin pipe, %.1fs)"
+        % (rendered, cached, dt))
+    log("streamed+encoded in %.1fs (%.0f ms/frame, stdin pipe only)"
         % (dt, dt * 1000 / max(1, n)))
     _verify_out(ff, out)
 
@@ -949,55 +917,6 @@ def _verify_out(ff: str, out: Path) -> None:
     for line in (chk.stderr or "").splitlines():
         if "Duration" in line or "Stream #" in line:
             log("  " + line.strip())
-
-
-def render_video(project: Path, out: Path, audio: str | None,
-                 workers: int, force: bool) -> None:
-    cfg = load_project(project)
-    n = n_frames(cfg)
-    # 小片子开大并行是**负优化**：进程启动与 import 比渲一帧还贵。
-    # 每个 worker 至少领 16 帧，才摊得平启动成本（实测 60 帧开 8 进程反而更慢）。
-    eff = max(1, min(workers, math.ceil(n / 16) if n else 1))
-    if eff != workers:
-        log("workers: %d -> %d (only %d frames; startup would dominate)"
-            % (workers, eff, n))
-    t0 = time.time()
-    rendered = cached = 0
-    bar = _Bar("render", n)                     # pct + ETA：两个分支共用一条单行进度
-    if eff > 1:
-        from concurrent.futures import ProcessPoolExecutor
-        pstr = str(project)
-        with ProcessPoolExecutor(max_workers=eff) as pool:
-            futures = [pool.submit(_worker, pstr, fi, force, cfg) for fi in range(n)]
-            done = 0
-            for fut in futures:
-                status, k = fut.result()
-                _mf_add(k)
-                done += 1
-                if status == "rendered":
-                    rendered += 1
-                else:
-                    cached += 1
-                bar.update(done)
-    else:
-        for fi in range(n):
-            status = render_frame(project, fi, force, cfg)
-            _mf_add(_LAST_K)
-            if status == "rendered":
-                rendered += 1
-            else:
-                cached += 1
-            bar.update(fi + 1)
-    bar.finish()
-    dt = time.time() - t0
-    log("frames: %d rendered, %d from cache, %.1fs (%.0f ms/frame)"
-        % (rendered, cached, dt, (dt * 1000 / max(1, rendered)) if rendered else 0))
-    encode_video(project, cfg, out, audio)
-
-
-def _worker(project_str: str, frame: int, force: bool, cfg: dict | None = None):
-    # 返回 (状态, 本帧子帧数)：worker 进程里的 _MF 主进程看不见，k 必须随结果回来
-    return render_frame(Path(project_str), frame, force, cfg), _LAST_K
 
 
 # ---------------------------------------------------------------- scaffold
@@ -1309,21 +1228,18 @@ def main() -> None:
                     help="超采样倍数 override：默认 project.json 的 supersample（2）；"
                          "终渲用 3 或 4 换更干净的边缘（换档会强制重渲，不复用旧档缓存）")
     ap.add_argument("--stream", action="store_true",
-                    help="流式输出：帧直管道给 ffmpeg，frames/ 一个字节都不写（省盘；"
-                         "代价是没有帧缓存 = 不能断点续渲）")
-    ap.add_argument("--no-stream", dest="no_stream", action="store_true",
-                    help="关掉默认的流式化，强制走帧缓存路径（可断点续渲 + 增量复用；"
-                         "10/12-bit 与 HDR 输出除外——那条路只有流式 libx265)")
+                    help="no-op 兼容位：管道编码现在是唯一路径（implied always-on）——"
+                         "缓存照写（resume/增量的价值），但编码器只见 stdin")
     ap.add_argument("--shutter", type=float, default=0.2,
                     help="运动模糊：每输出帧对快门窗口 shutter×帧时 内的子帧取平均"
                          "（temporal supersampling）。默认 0.2 = 质感起点不是上限（要更顺滑就"
                          "加大）；0 = 关。子帧时刻只由 t 决定，确定性不受影响")
     ap.add_argument("--samples", default="auto",
-                    help="每输出帧子帧数：auto（**只看画面**的自适应收敛：第4个子帧起，新子帧与"
-                         "已有均值的通道差 < tol 即停，下限4 上限324，无时间/次数预算）| 整数 N"
-                         "（固定，均匀铺满快门窗口）；仅 --shutter>0 时生效")
+                    help="每输出帧子帧数：auto（**只看画面**的自适应收敛：在二分档位边界比前后"
+                         "两档均值，通道差 < tol 即停；静止≈5、缓动≈17–65、甩镜打满324，无时间/"
+                         "次数预算）| 整数 N（固定，均匀铺满快门窗口）；仅 --shutter>0 时生效")
     ap.add_argument("--tol", type=int, default=3,
-                    help="auto 收敛判据：新子帧与**已有均值**的最大通道差 < tol（按 0..255 计，"
+                    help="auto 收敛判据：档位边界处前后两档均值的最大通道差 < tol（按 0..255 计，"
                          "即 tol/255）就停（默认 3）")
     ap.add_argument("--depth", type=int, default=8, help="输出位深 8|10|12（10/12 自动走流式）")
     ap.add_argument("--hdr10", action="store_true", help="10/12-bit 时按 HDR10 打标（BT.2020 + PQ）")
@@ -1415,43 +1331,14 @@ def main() -> None:
         return
     out = _out_path(project, args.out) if args.out else (project / "out" / "video.mp4")
 
-    # ---- 流式默认化（a/c 拍板：mp4 直出 + 本档位无可续缓存 → 自动 --stream）----
-    # 主信号：**写入前**读到的 prev == 本档位 stamp，且 frames/ 真有帧文件 ——
-    # 有可续/可增量的缓存走缓存路径，否则一遍过直喂 ffmpeg（帧缓存 0 字节）。
-    # 注意 marker 在分发前已写盘，必须用写入前读到的 prev，不能写完再读；
-    # v1 不做"签名失配也判流式"（c 拍板：中断续跑的价值 > 白写盘的代价）。
-    try:
-        resumable = (prev == stamp) and any(True for _ in marker.parent.glob("f?????*"))
-    except Exception:
-        resumable = False
-    if depth >= 10 or args.hdr_vivid:
-        # 10/12-bit 只有流式路径能出（缓存路径的 encode_video 是 8-bit libx264）
-        stream_on = True
-        if args.no_stream:
-            log("stream: forced for depth=%d/hdr output (cache path encodes 8-bit only); "
-                "--no-stream ignored" % depth)
-        else:
-            log("stream: on (depth=%d/hdr output — 10-bit libx265 stream path)" % depth)
-    elif args.no_stream:
-        stream_on = False
-        log("stream: off (--no-stream — frame cache kept: resumable + incremental)")
-    elif args.stream:
-        stream_on = True
-        log("stream: on (--stream — one-shot delivery, 0-byte frame cache)")
-    else:
-        stream_on = not resumable
-        log("stream: auto-%s (%s)" % (
-            "on" if stream_on else "off",
-            "no resumable frame cache for this render pass -> one-shot delivery"
-            if stream_on else
-            "resumable frame cache found (this render pass) -> incremental + resumable"))
+    # ---- 编码只留管道（np-A 定稿）：没有判定、没有第二条路 ----
+    # 帧来源（缓存读出 / 现场渲）由 render_video 内部经 _pipe_frame 决定，编码器只见
+    # stdin；resume 靠缓存读分支保住，--force 才整轮重渲。HDR 10/12-bit 同一条管道。
     _reset_blur_stats()
     t_disp = time.time()
-    if stream_on:
-        render_video_stream(project, out, args.audio, max(1, args.workers), depth,
-                            args.hdr10, vivid=args.hdr_vivid)
-    else:
-        render_video(project, out, args.audio, max(1, args.workers), force)
+    log("stream: always on (streaming is the only encoder path)")
+    render_video(project, out, args.audio, max(1, args.workers), depth,
+                 args.hdr10, force, vivid=args.hdr_vivid)
     if shutter > 0:
         # 成本只作记录（排期用），不参与任何采样决策
         _log_blur(shutter, samples, tol, n_frames(cfg), time.time() - t_disp)
